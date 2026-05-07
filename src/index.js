@@ -6,6 +6,15 @@ const connectDB = require('./config/db');
 // Load env vars
 dotenv.config();
 
+// Validate environment variables
+const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET'];
+requiredEnvVars.forEach(envVar => {
+  if (!process.env[envVar]) {
+    console.error(`CRITICAL ERROR: Environment variable ${envVar} is missing!`);
+    process.exit(1);
+  }
+});
+
 // Connect to database
 connectDB();
 
@@ -24,6 +33,10 @@ app.use('/api/readings', require('./routes/readings'));
 
 app.get('/', (req, res) => {
   res.send('API is running...');
+});
+
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 const PORT = process.env.PORT || 5000;

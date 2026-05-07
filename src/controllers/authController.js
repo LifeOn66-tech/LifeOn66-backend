@@ -17,9 +17,13 @@ exports.register = async (req, res) => {
 
     sendTokenResponse(user, 201, res);
   } catch (err) {
+    let message = err.message;
+    if (err.code === 11000) {
+      message = 'An account with this email already exists. Please sign in instead.';
+    }
     res.status(400).json({
       success: false,
-      error: err.message
+      error: message
     });
   }
 };

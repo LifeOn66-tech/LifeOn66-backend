@@ -12,17 +12,17 @@ const connectDB = async () => {
   while (retries < maxRetries) {
     try {
       const conn = await mongoose.connect(process.env.MONGODB_URI);
-      console.log(`-------------------mongoDB Connected: ${conn.connection.host}----------------------`);
+      console.log(`-------------------mongoDB Connected----------------------`);
       return;
     } catch (error) {
       retries++;
       console.error(`MongoDB connection attempt ${retries} failed: ${error.message}`);
-      
+
       if (retries === maxRetries) {
         console.error('CRITICAL: Max retries reached for MongoDB connection. Exiting...');
         process.exit(1);
       }
-      
+
       console.log('Retrying in 5 seconds...');
       await new Promise(resolve => setTimeout(resolve, 5000));
     }

@@ -658,21 +658,23 @@ async function generatePDF(analysis, language, fullData, tier, userName) {
     const executablePath = findChromeExecutable();
     
     const launchOptions = {
-      headless: "new",
+      headless: true,
+      channel: 'chrome-headless-shell',
       args: [
         '--no-sandbox', 
         '--disable-setuid-sandbox', 
         '--disable-dev-shm-usage', 
-        '--disable-web-security',
         '--disable-gpu',
         '--no-zygote',
-        '--single-process'
+        '--single-process',
+        '--disable-software-rasterizer'
       ],
     };
 
     if (executablePath) {
       console.log(`[PDF] Using explicit executablePath: ${executablePath}`);
       launchOptions.executablePath = executablePath;
+      delete launchOptions.channel;
     }
 
     browser = await puppeteer.launch(launchOptions);

@@ -175,7 +175,8 @@ async function generateAndUploadReceipt(receiptData) {
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--no-zygote',
-        '--single-process'
+        '--single-process',
+        '--disable-software-rasterizer'
       ],
     };
 

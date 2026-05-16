@@ -16,11 +16,11 @@ mkdir -p $PUPPETEER_CACHE_DIR
 
 echo "Installing Puppeteer browser into: $PUPPETEER_CACHE_DIR"
 
-# Force installation and specify platform
-npx puppeteer browsers install chrome --path $PUPPETEER_CACHE_DIR
+# Use the internal installer which is more reliable for matching versions
+PUPPETEER_SKIP_DOWNLOAD=false node node_modules/puppeteer/install.mjs
 
-echo "Verifying installation..."
-ls -R $PUPPETEER_CACHE_DIR | head -n 20
+echo "Verifying installation structure..."
+find $PUPPETEER_CACHE_DIR -maxdepth 5
 
 echo "--- RENDER BUILD COMPLETE ---"
 

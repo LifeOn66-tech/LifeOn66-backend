@@ -29,8 +29,6 @@ connectDB();
 
 const app = express();
 
-
-
 // Body parser
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -59,8 +57,7 @@ app.use(cors({
       return callback(null, true);
     }
     
-    const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
-    return callback(new Error(msg), false);
+    return callback(null, true); // Fallback to allow all for now to debug
   },
   credentials: true
 }));
@@ -68,7 +65,6 @@ app.use(cors({
 // Legacy/Compatibility Redirects - Handles requests without /api prefix
 app.use((req, res, next) => {
   const legacyPaths = ['/auth', '/payments', '/readings', '/reports'];
-  // Extract the first segment of the path
   const segments = req.path.split('/').filter(Boolean);
   const firstPath = segments.length > 0 ? '/' + segments[0] : '';
   
@@ -88,9 +84,11 @@ app.get('/api/health-browser', async (req, res) => {
   let browser;
   try {
     const executablePath = findChromeExecutable();
+    console.log(`[Health] Launching with executablePath: ${executablePath || 'default'}`);
+    
     const launchOptions = {
       headless: "new",
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     };
 
     if (executablePath) {
@@ -100,22 +98,26 @@ app.get('/api/health-browser', async (req, res) => {
     browser = await puppeteer.launch(launchOptions);
     const version = await browser.version();
     await browser.close();
-    res.json({ success: true, message: 'Puppeteer launched successfully', version, executablePath });
+    res.json({ 
+      success: true, 
+      message: 'Puppeteer launched successfully', 
+      version, 
+      executablePath,
+      cacheDir: process.env.PUPPETEER_CACHE_DIR 
+    });
   } catch (error) {
-
-    const fs = require('fs');
-    const path = require('path');
     const localCachePath = path.join(process.cwd(), '.puppeteer_cache');
     const executablePath = findChromeExecutable();
     let debugInfo = { 
+      cwd: process.cwd(),
+      envCacheDir: process.env.PUPPETEER_CACHE_DIR,
       localCacheExists: fs.existsSync(localCachePath), 
-      localCachePath,
       foundExecutablePath: executablePath
     };
     
     if (debugInfo.localCacheExists) {
       try {
-        debugInfo.files = fs.readdirSync(localCachePath, { recursive: true }).slice(0, 50);
+        debugInfo.cacheContents = fs.readdirSync(localCachePath, { recursive: true }).slice(0, 100);
       } catch (e) { debugInfo.readError = e.message; }
     }
 
@@ -147,7 +149,6 @@ app.get('/health', (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-
 const MODE = process.env.NODE_ENV || 'development';
 
 app.listen(PORT, () => {

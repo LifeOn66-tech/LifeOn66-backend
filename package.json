@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "postinstall": "npx puppeteer browsers install chrome"
+    "build": "./render-build.sh",
+    "postinstall": "rm -rf /opt/render/.cache/puppeteer && npx puppeteer browsers install chrome"
   },
   "keywords": [],
   "author": "",

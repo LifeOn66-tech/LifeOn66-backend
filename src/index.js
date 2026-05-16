@@ -72,6 +72,26 @@ app.use((req, res, next) => {
 });
 
 
+// Root health check
+app.get('/api/health-browser', async (req, res) => {
+  try {
+    const puppeteer = require('puppeteer');
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    const version = await browser.version();
+    await browser.close();
+    res.json({ success: true, message: 'Puppeteer launched successfully', version });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Puppeteer failed to launch', error: error.message });
+  }
+});
+
+// Alias at root for easier access
+app.get('/health-browser', (req, res) => res.redirect('/api/health-browser'));
+
+
 // Mount routers
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/readings', require('./routes/readings'));

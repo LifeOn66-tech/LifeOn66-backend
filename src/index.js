@@ -15,6 +15,15 @@ requiredEnvVars.forEach(envVar => {
   }
 });
 
+// Set global Puppeteer cache directory for Render stability
+const path = require('path');
+const fs = require('fs');
+const localCache = path.join(process.cwd(), '.puppeteer_cache');
+if (fs.existsSync(localCache)) {
+  process.env.PUPPETEER_CACHE_DIR = localCache;
+  console.log(`[Config] Puppeteer using local cache: ${localCache}`);
+}
+
 // Connect to database
 connectDB();
 
@@ -74,9 +83,10 @@ app.use((req, res, next) => {
 
 // Root health check
 app.get('/api/health-browser', async (req, res) => {
+  const puppeteer = require('puppeteer');
+  let browser;
   try {
-    const puppeteer = require('puppeteer');
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       headless: "new",
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });

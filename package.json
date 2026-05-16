@@ -6,7 +6,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "build": "./render-build.sh",
-    "postinstall": "(rm -rf /opt/render/.cache/puppeteer || true) && PUPPETEER_SKIP_DOWNLOAD=false node node_modules/puppeteer/install.mjs"
+    "postinstall": "(rm -rf /opt/render/.cache/puppeteer || true) && PUPPETEER_SKIP_DOWNLOAD=false PUPPETEER_CACHE_DIR=./.puppeteer_cache node node_modules/puppeteer/install.mjs"
   },
   "keywords": [],
   "author": "",

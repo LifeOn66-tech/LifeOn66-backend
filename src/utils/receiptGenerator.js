@@ -164,7 +164,10 @@ async function generateAndUploadReceipt(receiptData) {
   let browser;
   try {
     console.log('[Receipt] Launching Puppeteer...');
-    browser = await puppeteer.launch({
+    const { findChromeExecutable } = require('./puppeteerHelper');
+    const executablePath = findChromeExecutable();
+
+    const launchOptions = {
       headless: true,
       args: [
         '--no-sandbox', 
@@ -174,7 +177,14 @@ async function generateAndUploadReceipt(receiptData) {
         '--no-zygote',
         '--single-process'
       ],
-    });
+    };
+
+    if (executablePath) {
+      console.log(`[Receipt] Using explicit executablePath: ${executablePath}`);
+      launchOptions.executablePath = executablePath;
+    }
+
+    browser = await puppeteer.launch(launchOptions);
 
     const page = await browser.newPage();
     await page.setContent(buildReceiptHtml(receiptData), { waitUntil: 'networkidle0' });

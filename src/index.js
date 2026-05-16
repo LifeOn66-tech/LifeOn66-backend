@@ -49,6 +49,18 @@ app.use(cors({
   credentials: true
 }));
 
+// Legacy/Compatibility Redirects
+app.use((req, res, next) => {
+  const legacyPaths = ['/auth', '/payments', '/readings', '/reports'];
+  const firstPath = '/' + req.path.split('/')[1];
+  
+  if (legacyPaths.includes(firstPath)) {
+    console.log(`[Redirect] Routing legacy path ${req.path} to /api${req.path}`);
+    req.url = '/api' + req.url;
+  }
+  next();
+});
+
 // Mount routers
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/readings', require('./routes/readings'));

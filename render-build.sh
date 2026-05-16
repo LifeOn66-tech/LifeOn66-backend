@@ -2,14 +2,20 @@
 # exit on error
 set -o errexit
 
+echo "--- STARTING RENDER BUILD ---"
+
+# Install dependencies
 npm install
 
-# Clear cache for clean install
-echo "Cleaning existing Puppeteer cache..."
-rm -rf .puppeteer_cache
+# Define cache directory relative to project root
+export PUPPETEER_CACHE_DIR=$(pwd)/.puppeteer_cache
 
-echo "Installing Puppeteer browser..."
-PUPPETEER_SKIP_DOWNLOAD=false node node_modules/puppeteer/install.mjs
+echo "Installing Puppeteer browser into: $PUPPETEER_CACHE_DIR"
+
+# Modern installation command for Puppeteer v20+
+npx puppeteer browsers install chrome
+
+echo "--- RENDER BUILD COMPLETE ---"
 
 
 

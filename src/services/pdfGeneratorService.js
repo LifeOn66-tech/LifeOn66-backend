@@ -656,7 +656,15 @@ async function generatePDF(analysis, language, fullData, tier, userName) {
     console.log(`[PDF] Starting Puppeteer launch for ${tier} report...`);
     browser = await puppeteer.launch({
       headless: "new",
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-web-security'],
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox', 
+        '--disable-dev-shm-usage', 
+        '--disable-web-security',
+        '--disable-gpu',
+        '--no-zygote',
+        '--single-process'
+      ],
     });
     
     console.log('[PDF] Opening new page...');

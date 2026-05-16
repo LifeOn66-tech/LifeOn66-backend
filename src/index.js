@@ -106,11 +106,25 @@ app.get('/api/health-browser', async (req, res) => {
     const fs = require('fs');
     const path = require('path');
     const localCachePath = path.join(process.cwd(), '.puppeteer_cache');
-    let debugInfo = { localCacheExists: fs.existsSync(localCachePath), localCachePath };
+    const executablePath = findChromeExecutable();
+    let debugInfo = { 
+      localCacheExists: fs.existsSync(localCachePath), 
+      localCachePath,
+      foundExecutablePath: executablePath
+    };
+    
     if (debugInfo.localCacheExists) {
-      debugInfo.files = fs.readdirSync(localCachePath, { recursive: true }).slice(0, 50);
+      try {
+        debugInfo.files = fs.readdirSync(localCachePath, { recursive: true }).slice(0, 50);
+      } catch (e) { debugInfo.readError = e.message; }
     }
-    res.status(500).json({ success: false, message: 'Puppeteer failed to launch', error: error.message, debugInfo });
+
+    res.status(500).json({ 
+      success: false, 
+      message: 'Puppeteer failed to launch', 
+      error: error.message, 
+      debugInfo 
+    });
   }
 });
 

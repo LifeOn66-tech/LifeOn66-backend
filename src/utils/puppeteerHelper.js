@@ -9,12 +9,7 @@ const findChromeExecutable = () => {
   const localCache = path.join(process.cwd(), '.puppeteer_cache');
   if (!fs.existsSync(localCache)) return null;
 
-  // Search for the 'chrome' binary in the chrome folder
-  const chromeDir = path.join(localCache, 'chrome');
-  if (!fs.existsSync(chromeDir)) return null;
-
-  // Walk through the chrome directory to find the binary
-  // Typically: .puppeteer_cache/chrome/linux-123.456/chrome-linux64/chrome
+  // Search for the 'chrome' binary in the cache
   const walkSync = (dir) => {
     const files = fs.readdirSync(dir);
     for (const file of files) {
@@ -25,20 +20,22 @@ const findChromeExecutable = () => {
         if (found) return found;
       } else {
         // Look for the main chrome executable
-        // On Linux it's usually just 'chrome'
-        if (file === 'chrome' || file === 'google-chrome' || (process.platform === 'win32' && file === 'chrome.exe')) {
-          // Verify it's in a 'chrome-linux64' or similar directory to avoid false positives
-          if (filePath.includes('chrome-linux64') || filePath.includes('chrome-win64')) {
+        const isChromeBinary = file === 'chrome' || file === 'google-chrome' || file === 'chrome-headless-shell' || (process.platform === 'win32' && file === 'chrome.exe');
+        
+        if (isChromeBinary) {
+          // Verify it's in a 'chrome-linux64', 'chrome-headless-shell-linux64' or similar directory
+          if (filePath.includes('linux64') || filePath.includes('win64')) {
             return filePath;
           }
         }
       }
     }
+
     return null;
   };
 
   try {
-    const executable = walkSync(chromeDir);
+    const executable = walkSync(localCache);
     if (executable) {
       console.log(`[Puppeteer] Found executable at: ${executable}`);
       // Ensure it's executable on Linux

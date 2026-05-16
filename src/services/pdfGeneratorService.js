@@ -654,7 +654,10 @@ async function generatePDF(analysis, language, fullData, tier, userName) {
   let browser;
   try {
     console.log(`[PDF] Starting Puppeteer launch for ${tier} report...`);
-    browser = await puppeteer.launch({
+    const { findChromeExecutable } = require('../utils/puppeteerHelper');
+    const executablePath = findChromeExecutable();
+    
+    const launchOptions = {
       headless: "new",
       args: [
         '--no-sandbox', 
@@ -665,7 +668,14 @@ async function generatePDF(analysis, language, fullData, tier, userName) {
         '--no-zygote',
         '--single-process'
       ],
-    });
+    };
+
+    if (executablePath) {
+      console.log(`[PDF] Using explicit executablePath: ${executablePath}`);
+      launchOptions.executablePath = executablePath;
+    }
+
+    browser = await puppeteer.launch(launchOptions);
     
     console.log('[PDF] Opening new page...');
     const page = await browser.newPage();

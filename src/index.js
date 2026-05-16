@@ -84,27 +84,25 @@ app.use((req, res, next) => {
 // Root health check
 app.get('/api/health-browser', async (req, res) => {
   const puppeteer = require('puppeteer');
+  const { findChromeExecutable } = require('./utils/puppeteerHelper');
   let browser;
   try {
-    const fs = require('fs');
-    const path = require('path');
-    const localCachePath = path.join(process.cwd(), '.puppeteer_cache');
-    let debugInfo = { localCacheExists: fs.existsSync(localCachePath), localCachePath };
-    
-    if (debugInfo.localCacheExists) {
-      try {
-        debugInfo.files = fs.readdirSync(localCachePath, { recursive: true }).slice(0, 20); // First 20 files
-      } catch (e) { debugInfo.readError = e.message; }
-    }
-
-    browser = await puppeteer.launch({
+    const executablePath = findChromeExecutable();
+    const launchOptions = {
       headless: "new",
       args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    };
+
+    if (executablePath) {
+      launchOptions.executablePath = executablePath;
+    }
+
+    browser = await puppeteer.launch(launchOptions);
     const version = await browser.version();
     await browser.close();
-    res.json({ success: true, message: 'Puppeteer launched successfully', version, debugInfo });
+    res.json({ success: true, message: 'Puppeteer launched successfully', version, executablePath });
   } catch (error) {
+
     const fs = require('fs');
     const path = require('path');
     const localCachePath = path.join(process.cwd(), '.puppeteer_cache');

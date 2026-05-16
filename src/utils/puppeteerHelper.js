@@ -7,13 +7,15 @@ const fs = require('fs');
  */
 const findChromeExecutable = () => {
   const localCache = path.join(process.cwd(), '.puppeteer_cache');
-  console.log(`[Puppeteer] Searching in cache: ${localCache}`);
+  console.log(`[Puppeteer] Deep search in cache: ${localCache}`);
   
   if (!fs.existsSync(localCache)) {
     console.log(`[Puppeteer] Cache directory does not exist at: ${localCache}`);
     return null;
   }
 
+  const foundFiles = [];
+  
   // Search for the 'chrome' binary or 'chrome-headless-shell' in the cache
   const walkSync = (dir) => {
     try {
@@ -23,9 +25,10 @@ const findChromeExecutable = () => {
         const stat = fs.statSync(filePath);
         
         if (stat.isDirectory()) {
-          const found = walkSync(filePath);
-          if (found) return found;
+          walkSync(filePath);
         } else {
+          foundFiles.push({ path: filePath, size: stat.size });
+          
           // Look for common chrome binary names
           const isChromeBinary = 
             file === 'chrome' || 
@@ -33,24 +36,26 @@ const findChromeExecutable = () => {
             file === 'chrome-headless-shell' || 
             (process.platform === 'win32' && file === 'chrome.exe');
           
-          if (isChromeBinary) {
-            // Basic sanity check: binary should be at least a few MBs
-            if (stat.size > 1024 * 1024) { 
-              console.log(`[Puppeteer] Found potential binary: ${filePath} (${Math.round(stat.size / 1024 / 1024)} MB)`);
-              return filePath;
-            }
+          if (isChromeBinary && stat.size > 1024 * 1024) { 
+            console.log(`[Puppeteer] Found potential binary: ${filePath} (${Math.round(stat.size / 1024 / 1024)} MB)`);
           }
         }
       }
     } catch (err) {
       console.error(`[Puppeteer] Error reading directory ${dir}:`, err.message);
     }
-    return null;
   };
 
-  const executable = walkSync(localCache);
-  if (executable) {
-    // Ensure it's executable on Linux
+  walkSync(localCache);
+
+  // After walking, pick the best candidate
+  const candidate = foundFiles.find(f => {
+    const name = path.basename(f.path);
+    return (name === 'chrome' || name === 'chrome-headless-shell' || name === 'google-chrome') && f.size > 10000000; // >10MB
+  });
+
+  if (candidate) {
+    const executable = candidate.path;
     if (process.platform !== 'win32') {
       try { 
         fs.chmodSync(executable, '755'); 
@@ -62,7 +67,8 @@ const findChromeExecutable = () => {
     return executable;
   }
 
-  console.log('[Puppeteer] No Chrome executable found in cache.');
+  console.log('[Puppeteer] No valid Chrome executable (>10MB) found in cache.');
+  console.log('[Puppeteer] Files found in cache:', JSON.stringify(foundFiles.slice(0, 20), null, 2));
   return null;
 };
 

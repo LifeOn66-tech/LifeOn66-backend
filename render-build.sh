@@ -13,11 +13,11 @@ export PUPPETEER_CACHE_DIR=$(pwd)/.puppeteer_cache
 echo "Cleaning Puppeteer cache for fresh install..."
 rm -rf $PUPPETEER_CACHE_DIR
 
-echo "Installing Puppeteer browser using @puppeteer/browsers CLI..."
-# This CLI properly downloads AND extracts the browser binary
-npx --yes @puppeteer/browsers install chrome@stable --path $PUPPETEER_CACHE_DIR
+echo "Installing chrome-headless-shell (lighter, no system lib dependencies)..."
+# chrome-headless-shell works on Render without needing extra system libraries
+npx --yes @puppeteer/browsers install chrome-headless-shell@stable --path $PUPPETEER_CACHE_DIR
 
-echo "Verifying installation - looking for chrome binary..."
-find $PUPPETEER_CACHE_DIR -name "chrome" -o -name "chrome-headless-shell" 2>/dev/null | head -20
+echo "Verifying - looking for binary..."
+find $PUPPETEER_CACHE_DIR -type f -name "chrome-headless-shell" | head -5
 
 echo "--- RENDER BUILD COMPLETE ---"

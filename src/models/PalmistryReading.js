@@ -6,7 +6,11 @@ const PalmistryReadingSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  imageUrl: String,
+  images: {
+    left: String,
+    right: String,
+    both: String
+  },
   fateLineAnalysis: String,
   headLineAnalysis: String,
   sunLineAnalysis: String,

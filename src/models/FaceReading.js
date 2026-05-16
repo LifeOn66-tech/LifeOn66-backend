@@ -6,7 +6,11 @@ const FaceReadingSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  imageUrl: String,
+  images: {
+    center: String,
+    left: String,
+    right: String
+  },
   personalityTraits: mongoose.Schema.Types.Mixed,
   leadershipScore: Number,
   teamworkScore: Number,

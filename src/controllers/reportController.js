@@ -62,7 +62,7 @@ exports.generateReport = async (req, res) => {
     console.error('Error in generateReport controller:', error);
     res.status(500).json({ 
       success: false, 
-      message: 'Failed to generate report',
+      message: `PDF Generation Failed: ${error.message}. Please check backend logs.`,
       error: error.message 
     });
   }

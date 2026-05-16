@@ -38,8 +38,15 @@ app.use(cors({
     // allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    // Check if the origin is in the allowed list or if it's a vercel deployment
-    if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.vercel.app')) {
+    // Clean origin (remove trailing slash)
+    const cleanOrigin = origin.replace(/\/+$/, '');
+    
+    // Check if the origin is in the allowed list or if it's a vercel/render deployment
+    if (
+      allowedOrigins.indexOf(cleanOrigin) !== -1 || 
+      cleanOrigin.endsWith('.vercel.app') || 
+      cleanOrigin.endsWith('.onrender.com')
+    ) {
       return callback(null, true);
     }
     
@@ -52,7 +59,9 @@ app.use(cors({
 // Legacy/Compatibility Redirects - Handles requests without /api prefix
 app.use((req, res, next) => {
   const legacyPaths = ['/auth', '/payments', '/readings', '/reports'];
-  const firstPath = '/' + req.path.split('/')[1];
+  // Extract the first segment of the path
+  const segments = req.path.split('/').filter(Boolean);
+  const firstPath = segments.length > 0 ? '/' + segments[0] : '';
   
   if (legacyPaths.includes(firstPath) && !req.path.startsWith('/api')) {
     const newUrl = '/api' + req.url;
@@ -61,6 +70,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+
 
 // Mount routers
 app.use('/api/auth', require('./routes/auth'));

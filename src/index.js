@@ -49,14 +49,15 @@ app.use(cors({
   credentials: true
 }));
 
-// Legacy/Compatibility Redirects
+// Legacy/Compatibility Redirects - Handles requests without /api prefix
 app.use((req, res, next) => {
   const legacyPaths = ['/auth', '/payments', '/readings', '/reports'];
   const firstPath = '/' + req.path.split('/')[1];
   
-  if (legacyPaths.includes(firstPath)) {
-    console.log(`[Redirect] Routing legacy path ${req.path} to /api${req.path}`);
-    req.url = '/api' + req.url;
+  if (legacyPaths.includes(firstPath) && !req.path.startsWith('/api')) {
+    const newUrl = '/api' + req.url;
+    console.log(`[Redirect] Routing legacy path ${req.path} -> ${newUrl}`);
+    req.url = newUrl;
   }
   next();
 });

@@ -19,9 +19,15 @@ requiredEnvVars.forEach(envVar => {
 const path = require('path');
 const fs = require('fs');
 const localCache = path.join(process.cwd(), '.puppeteer_cache');
+
+// Always set this so Puppeteer knows where to look by default
+process.env.PUPPETEER_CACHE_DIR = localCache;
+console.log(`[Config] Puppeteer cache path set to: ${localCache}`);
+
 if (fs.existsSync(localCache)) {
-  process.env.PUPPETEER_CACHE_DIR = localCache;
-  console.log(`[Config] Puppeteer using local cache: ${localCache}`);
+  console.log(`[Config] Verified: Local cache directory exists.`);
+} else {
+  console.warn(`[Config] Warning: Local cache directory NOT found at ${localCache}. This might cause launch failures.`);
 }
 
 // Connect to database

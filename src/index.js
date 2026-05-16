@@ -6,6 +6,9 @@ const connectDB = require('./config/db');
 // Load env vars
 dotenv.config();
 
+const PORT = process.env.PORT || 5000;
+const MODE = process.env.NODE_ENV || 'development';
+
 // Validate environment variables
 const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET'];
 requiredEnvVars.forEach(envVar => {
@@ -26,8 +29,10 @@ console.log(`[Config] Puppeteer cache path set to: ${localCache}`);
 
 if (fs.existsSync(localCache)) {
   console.log(`[Config] Verified: Local cache directory exists.`);
-} else {
+} else if (MODE === 'production') {
   console.warn(`[Config] Warning: Local cache directory NOT found at ${localCache}. This might cause launch failures.`);
+} else {
+  console.log(`[Config] Tip: Run 'npm run postinstall' to download Chrome locally.`);
 }
 
 // Connect to database
@@ -153,9 +158,6 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
-
-const PORT = process.env.PORT || 5000;
-const MODE = process.env.NODE_ENV || 'development';
 
 app.listen(PORT, () => {
   console.log(`--------------Server running in ${MODE} mode on port ${PORT}------------`);

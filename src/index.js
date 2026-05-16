@@ -86,15 +86,33 @@ app.get('/api/health-browser', async (req, res) => {
   const puppeteer = require('puppeteer');
   let browser;
   try {
+    const fs = require('fs');
+    const path = require('path');
+    const localCachePath = path.join(process.cwd(), '.puppeteer_cache');
+    let debugInfo = { localCacheExists: fs.existsSync(localCachePath), localCachePath };
+    
+    if (debugInfo.localCacheExists) {
+      try {
+        debugInfo.files = fs.readdirSync(localCachePath, { recursive: true }).slice(0, 20); // First 20 files
+      } catch (e) { debugInfo.readError = e.message; }
+    }
+
     browser = await puppeteer.launch({
       headless: "new",
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     const version = await browser.version();
     await browser.close();
-    res.json({ success: true, message: 'Puppeteer launched successfully', version });
+    res.json({ success: true, message: 'Puppeteer launched successfully', version, debugInfo });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Puppeteer failed to launch', error: error.message });
+    const fs = require('fs');
+    const path = require('path');
+    const localCachePath = path.join(process.cwd(), '.puppeteer_cache');
+    let debugInfo = { localCacheExists: fs.existsSync(localCachePath), localCachePath };
+    if (debugInfo.localCacheExists) {
+      debugInfo.files = fs.readdirSync(localCachePath, { recursive: true }).slice(0, 50);
+    }
+    res.status(500).json({ success: false, message: 'Puppeteer failed to launch', error: error.message, debugInfo });
   }
 });
 

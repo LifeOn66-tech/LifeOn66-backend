@@ -2,6 +2,7 @@ const AstrologyReading = require('../models/AstrologyReading');
 const PalmistryReading = require('../models/PalmistryReading');
 const FaceReading = require('../models/FaceReading');
 const CareerInsight = require('../models/CareerInsight');
+const { generatePDFBuffer } = require('../utils/pdfGenerator');
 
 // @desc    Save astrology reading
 // @route   POST /api/readings/astrology
@@ -50,6 +51,21 @@ exports.saveCareerInsight = async (req, res) => {
     req.body.user = req.user.id;
     const reading = await CareerInsight.create(req.body);
     res.status(201).json({ success: true, data: reading });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+};
+
+// @desc    Get latest career insight
+// @route   GET /api/readings/insight
+// @access  Private
+exports.getCareerInsight = async (req, res) => {
+  try {
+    const insight = await CareerInsight.findOne({ user: req.user.id }).sort({ createdAt: -1 });
+    if (!insight) {
+      return res.status(404).json({ success: false, error: 'Insight not found' });
+    }
+    res.status(200).json({ success: true, data: insight });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -111,3 +127,4 @@ exports.generateAstrologyData = async (req, res) => {
     res.status(400).json({ success: false, error: err.message });
   }
 };
+

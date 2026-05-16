@@ -4,11 +4,15 @@ const {
   savePalmistryReading,
   saveFaceReading,
   saveCareerInsight,
+  getCareerInsight,
   getReadings,
-  generateAstrologyData
+  generateAstrologyData,
+  generatePdfReport
 } = require('../controllers/readingController');
 
 const router = express.Router();
+
+router.post('/astrology-generate', generateAstrologyData);
 
 const { protect } = require('../middleware/auth');
 
@@ -19,6 +23,6 @@ router.post('/astrology', saveAstrologyReading);
 router.post('/palmistry', savePalmistryReading);
 router.post('/face', saveFaceReading);
 router.post('/insight', saveCareerInsight);
-router.post('/astrology-generate', generateAstrologyData);
+router.get('/insight', getCareerInsight);
 
 module.exports = router;

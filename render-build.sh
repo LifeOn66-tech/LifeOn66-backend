@@ -7,8 +7,8 @@ echo "--- STARTING RENDER BUILD ---"
 # Install dependencies
 npm install
 
-# Define cache directory relative to project root
-export PUPPETEER_CACHE_DIR=$(pwd)/.puppeteer_cache
+# Define cache directory relative to project root (visible folder name to prevent Render build pruning)
+export PUPPETEER_CACHE_DIR=$(pwd)/puppeteer_cache
 echo "Setting Puppeteer Cache to: $PUPPETEER_CACHE_DIR"
 
 # Clean old cache to ensure no corrupted files are left

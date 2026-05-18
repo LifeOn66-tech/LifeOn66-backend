@@ -12,7 +12,7 @@ const findChromeExecutable = () => {
     return process.env.PUPPETEER_EXECUTABLE_PATH;
   }
 
-  const localCache = path.join(process.cwd(), '.puppeteer_cache');
+  const localCache = path.join(process.cwd(), 'puppeteer_cache');
   console.log(`[Puppeteer] Deep search in cache: ${localCache}`);
   
   // Try Puppeteer's own detection first (it respects PUPPETEER_CACHE_DIR)

@@ -6,7 +6,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "build": "./render-build.sh",
-    "postinstall": "echo \"Chrome installation is handled efficiently during build in render-build.sh\""
+    "postinstall": "node src/utils/installChrome.js"
   },
   "keywords": [],
   "author": "",

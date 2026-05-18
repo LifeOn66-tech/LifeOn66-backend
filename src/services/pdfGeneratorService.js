@@ -659,7 +659,6 @@ async function generatePDF(analysis, language, fullData, tier, userName) {
     
     const launchOptions = {
       headless: true,
-      channel: 'chrome-headless-shell',
       args: [
         '--no-sandbox', 
         '--disable-setuid-sandbox', 
@@ -674,7 +673,9 @@ async function generatePDF(analysis, language, fullData, tier, userName) {
     if (executablePath) {
       console.log(`[PDF] Using explicit executablePath: ${executablePath}`);
       launchOptions.executablePath = executablePath;
-      delete launchOptions.channel;
+    } else if (process.env.NODE_ENV === 'production' || process.env.PORT) {
+      // Fail fast on Render if the binary is missing, rather than throwing confusing Puppeteer channel errors
+      throw new Error(`Chrome Headless Shell executable not found in .puppeteer_cache. Please trigger "Clear Build Cache & Deploy" on Render.`);
     }
 
     browser = await puppeteer.launch(launchOptions);

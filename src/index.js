@@ -21,7 +21,7 @@ requiredEnvVars.forEach(envVar => {
 // Set global Puppeteer cache directory for Render stability
 const path = require('path');
 const fs = require('fs');
-const localCache = path.join(process.cwd(), '.puppeteer_cache');
+const localCache = path.join(process.cwd(), 'puppeteer_cache');
 
 // Always set this so Puppeteer knows where to look by default
 process.env.PUPPETEER_CACHE_DIR = localCache;
@@ -119,7 +119,7 @@ app.get('/api/health-browser', async (req, res) => {
       cacheDir: process.env.PUPPETEER_CACHE_DIR 
     });
   } catch (error) {
-    const localCachePath = path.join(process.cwd(), '.puppeteer_cache');
+    const localCachePath = path.join(process.cwd(), 'puppeteer_cache');
     const executablePath = findChromeExecutable();
     let debugInfo = { 
       cwd: process.cwd(),

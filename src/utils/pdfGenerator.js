@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+const { findChromeExecutable } = require('./puppeteerHelper');
 
 // Translating the frontend's text translations to the backend
 const translations = {
@@ -395,31 +396,34 @@ const createHTMLContent = (analysis, language = 'en', fullData, tier = 'free', u
 
 exports.generatePDFBuffer = async (analysis, language, fullData, tier, userName) => {
   const htmlContent = createHTMLContent(analysis, language, fullData, tier, userName);
-
-  // Launch Puppeteer headless browser
-  const browser = await puppeteer.launch({
-    headless: "new",
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security'] // Disable web security helps bypass complex CORS if necessary
-  });
-
-  const page = await browser.newPage();
-  
-  // Set content and wait for images to load perfectly
-  await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-
-  // Generate PDF
-  const pdfBuffer = await page.pdf({
-    format: 'A4',
-    printBackground: true,
-    margin: {
-      top: '0px',
-      right: '0px',
-      bottom: '0px',
-      left: '0px'
+  let browser;
+  try {
+    const executablePath = findChromeExecutable();
+    const launchOptions = {
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--no-zygote',
+        '--single-process',
+        '--disable-web-security'
+      ],
+    };
+    if (executablePath) {
+      launchOptions.executablePath = executablePath;
     }
-  });
-
-  await browser.close();
-  
-  return pdfBuffer;
+    browser = await puppeteer.launch(launchOptions);
+    const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: 'networkidle0', timeout: 60000 });
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' }
+    });
+    return pdfBuffer;
+  } finally {
+    if (browser) await browser.close();
+  }
 };

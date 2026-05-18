@@ -6,6 +6,12 @@ const puppeteer = require('puppeteer');
  * Robustly finds the Puppeteer-installed Chrome executable in the local cache.
  */
 const findChromeExecutable = () => {
+  // If explicitly configured via environment variable (e.g. in Docker), use that first
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    console.log(`[Puppeteer] Using environment PUPPETEER_EXECUTABLE_PATH: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+
   const localCache = path.join(process.cwd(), '.puppeteer_cache');
   console.log(`[Puppeteer] Deep search in cache: ${localCache}`);
   

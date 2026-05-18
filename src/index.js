@@ -27,10 +27,12 @@ const localCache = path.join(process.cwd(), '.puppeteer_cache');
 process.env.PUPPETEER_CACHE_DIR = localCache;
 console.log(`[Config] Puppeteer cache path set to: ${localCache}`);
 
-if (fs.existsSync(localCache)) {
+if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+  console.log(`[Config] Puppeteer configured to use pre-installed Chrome at: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);
+} else if (fs.existsSync(localCache)) {
   console.log(`[Config] Verified: Local cache directory exists.`);
 } else if (MODE === 'production') {
-  console.warn(`[Config] Warning: Local cache directory NOT found at ${localCache}. This might cause launch failures.`);
+  console.warn(`[Config] Warning: Local cache directory NOT found at ${localCache} and no pre-installed Chrome path configured. This might cause launch failures.`);
 } else {
   console.log(`[Config] Tip: Run 'npm run postinstall' to download Chrome locally.`);
 }

@@ -6,7 +6,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "build": "./render-build.sh",
-    "postinstall": "npx --yes @puppeteer/browsers install chrome-headless-shell@stable --path ./.puppeteer_cache"
+    "postinstall": "echo \"Chrome installation is handled efficiently during build in render-build.sh\""
   },
   "keywords": [],
   "author": "",

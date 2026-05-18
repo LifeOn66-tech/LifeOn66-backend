@@ -183,6 +183,8 @@ async function generateAndUploadReceipt(receiptData) {
     if (executablePath) {
       console.log(`[Receipt] Using explicit executablePath: ${executablePath}`);
       launchOptions.executablePath = executablePath;
+    } else if (process.env.NODE_ENV === 'production' || process.env.PORT) {
+      throw new Error(`Chrome Headless Shell executable not found in .puppeteer_cache. Please trigger "Clear Build Cache & Deploy" on Render.`);
     }
 
     browser = await puppeteer.launch(launchOptions);

@@ -3,7 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 
-// Load env vars
+// Load env vars (triggered nodemon restart for puppeteer change)
 dotenv.config();
 
 const PORT = process.env.PORT || 5000;
@@ -23,9 +23,13 @@ const path = require('path');
 const fs = require('fs');
 const localCache = path.join(process.cwd(), 'puppeteer_cache');
 
-// Always set this so Puppeteer knows where to look by default
-process.env.PUPPETEER_CACHE_DIR = localCache;
-console.log(`[Config] Puppeteer cache path set to: ${localCache}`);
+// ONLY set the custom cache directory in production (Render) to prevent breaking default local lookups on Windows/macOS
+if (MODE === 'production') {
+  process.env.PUPPETEER_CACHE_DIR = localCache;
+  console.log(`[Config] Puppeteer cache path set to: ${localCache}`);
+} else {
+  console.log(`[Config] Running locally in development. Puppeteer will use default system/global cache.`);
+}
 
 if (process.env.PUPPETEER_EXECUTABLE_PATH) {
   console.log(`[Config] Puppeteer configured to use pre-installed Chrome at: ${process.env.PUPPETEER_EXECUTABLE_PATH}`);

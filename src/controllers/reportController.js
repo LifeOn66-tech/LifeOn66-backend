@@ -33,14 +33,11 @@ exports.generateReport = async (req, res) => {
     }
 
     if (!isAuthorized) {
-      console.warn(`[SECURITY ALERT] Unauthorized PDF request! User: ${user.email} tried to get ${tier} but is only ${userTier}`);
-      return res.status(402).json({ 
-        success: false, 
-        message: `Payment Required: You have not purchased the ${tier.charAt(0).toUpperCase() + tier.slice(1)} plan yet.` 
+      return res.status(402).json({
+        success: false,
+        message: `Payment Required: You have not purchased the ${tier.charAt(0).toUpperCase() + tier.slice(1)} plan yet.`,
       });
     }
-
-    console.log(`[PDF] Generating authorized ${finalTier} report for user: ${user.fullName}`);
 
     const pdfBuffer = await pdfService.generatePDF(
       analysis, 
@@ -59,11 +56,11 @@ exports.generateReport = async (req, res) => {
     res.send(pdfBuffer);
 
   } catch (error) {
-    console.error('Error in generateReport controller:', error);
-    res.status(500).json({ 
-      success: false, 
+    console.error('[Report] PDF generation failed:', error);
+    res.status(500).json({
+      success: false,
       message: `PDF Generation Failed: ${error.message}. Please check backend logs.`,
-      error: error.message 
+      error: error.message,
     });
   }
 };

@@ -7,7 +7,6 @@ const {
   getCareerInsight,
   getReadings,
   generateAstrologyData,
-  generatePdfReport
 } = require('../controllers/readingController');
 
 const router = express.Router();

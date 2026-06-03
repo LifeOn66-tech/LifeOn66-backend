@@ -2,7 +2,6 @@ const AstrologyReading = require('../models/AstrologyReading');
 const PalmistryReading = require('../models/PalmistryReading');
 const FaceReading = require('../models/FaceReading');
 const CareerInsight = require('../models/CareerInsight');
-const { generatePDFBuffer } = require('../utils/pdfGenerator');
 
 // @desc    Save astrology reading
 // @route   POST /api/readings/astrology
@@ -97,7 +96,7 @@ exports.getReadings = async (req, res) => {
 
 // @desc    Generate astrology reading (Mock)
 // @route   POST /api/readings/astrology-generate
-// @access  Private
+// @access  Public
 exports.generateAstrologyData = async (req, res) => {
   try {
     const apiData = {

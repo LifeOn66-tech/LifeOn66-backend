@@ -12,7 +12,7 @@ const connectDB = async () => {
   while (retries < maxRetries) {
     try {
       const conn = await mongoose.connect(process.env.MONGODB_URI);
-      console.log(`-------------------mongoDB Connected----------------------`);
+      console.log('-------------MongoDB connected-----------');
       return;
     } catch (error) {
       retries++;

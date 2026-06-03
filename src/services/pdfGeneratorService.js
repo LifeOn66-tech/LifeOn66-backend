@@ -44,8 +44,7 @@ function createHTMLContent(analysis, language = 'en', fullData = {}, tier = 'fre
   
   const proBadge = tier === 'professional' ? 'COSMIC MASTER' : tier === 'premium' ? 'ASTRAL NAVIGATOR' : 'COSMIC EXPLORER';
   const accentColor = tier === 'professional' ? '#a855f7' : tier === 'premium' ? '#eab308' : '#3b82f6';
-  const tierPrice = tier === 'professional' ? '$10.00' : tier === 'premium' ? '$5.00' : 'Free';
-  
+
   // Helper to ensure we have images
   const images = {
     palmRight: fullData?.palmistry?.images?.right || '',
@@ -653,54 +652,46 @@ function createHTMLContent(analysis, language = 'en', fullData = {}, tier = 'fre
 async function generatePDF(analysis, language, fullData, tier, userName) {
   let browser;
   try {
-    console.log(`[PDF] Starting Puppeteer launch for ${tier} report...`);
     const { findChromeExecutable } = require('../utils/puppeteerHelper');
     const executablePath = findChromeExecutable();
-    
+
     const launchOptions = {
       headless: true,
       args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox', 
-        '--disable-dev-shm-usage', 
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
         '--disable-gpu',
         '--no-zygote',
         '--single-process',
-        '--disable-software-rasterizer'
+        '--disable-software-rasterizer',
       ],
     };
 
     if (executablePath) {
-      console.log(`[PDF] Using explicit executablePath: ${executablePath}`);
       launchOptions.executablePath = executablePath;
     } else if (process.env.NODE_ENV === 'production' || process.env.PORT) {
-      throw new Error(`Chrome Headless Shell executable not found in puppeteer_cache. Please trigger "Clear Build Cache & Deploy" on Render.`);
+      throw new Error(
+        'Chrome Headless Shell executable not found in puppeteer_cache. Please trigger "Clear Build Cache & Deploy" on Render.'
+      );
     }
 
     browser = await puppeteer.launch(launchOptions);
-    
-    console.log('[PDF] Opening new page...');
     const page = await browser.newPage();
     const html = createHTMLContent(analysis, language, fullData, tier, userName);
-    
-    console.log('[PDF] Setting content and waiting for assets...');
-    // networkidle0 is important to ensure images load
-    await page.setContent(html, { 
+
+    await page.setContent(html, {
       waitUntil: 'networkidle0',
-      timeout: 60000 
-    });
-    
-    console.log('[PDF] Generating PDF buffer...');
-    const pdf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: 0, right: 0, bottom: 0, left: 0 }
+      timeout: 60000,
     });
 
-    console.log('[PDF] Success! Total bytes:', pdf.length);
-    return pdf;
+    return await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+    });
   } catch (error) {
-    console.error('[PDF] Error during generation:', error);
+    console.error('[PDF] Generation failed:', error);
     throw error;
   } finally {
     if (browser) await browser.close();

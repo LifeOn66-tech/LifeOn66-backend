@@ -1,4 +1,3 @@
-const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const https = require('https');
 const dns = require('dns');
@@ -9,121 +8,72 @@ const { generateAndUploadReceipt } = require('../utils/receiptGenerator');
 const RAZORPAY_KEY_ID = (process.env.RAZORPAY_KEY_ID || '').trim();
 const RAZORPAY_KEY_SECRET = (process.env.RAZORPAY_KEY_SECRET || '').trim();
 
-// Create a custom DNS resolver using Google DNS (8.8.8.8)
-// This completely bypasses local DNS failures/blocks (ENOTFOUND)
 const customResolver = new dns.promises.Resolver();
 customResolver.setServers(['8.8.8.8', '8.8.4.4']);
 
-const razorpay = new Razorpay({
-  key_id: RAZORPAY_KEY_ID,
-  key_secret: RAZORPAY_KEY_SECRET,
-});
+const razorpayDnsLookup = (hostname, lookupOptions, callback) => {
+  customResolver
+    .resolve4(hostname)
+    .then((addresses) => {
+      if (addresses?.length > 0) {
+        callback(null, addresses[0], 4);
+        return;
+      }
+      dns.lookup(hostname, lookupOptions, callback);
+    })
+    .catch(() => dns.lookup(hostname, lookupOptions, callback));
+};
 
-/**
- * Direct API call using native HTTPS with Custom DNS to avoid SDK bugs and Local DNS blocks
- */
-const createRazorpayOrderRest = (options) => {
-  return new Promise((resolve, reject) => {
+const razorpayApiRequest = (apiPath, body) =>
+  new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
     const auth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
-    const data = JSON.stringify(options);
 
-    const reqOptions = {
-      hostname: 'api.razorpay.com',
-      port: 443,
-      path: '/v1/orders',
-      method: 'POST',
-      family: 4, 
-      lookup: (hostname, lookupOptions, callback) => {
-        console.log(`[DNS] Resolving ${hostname} via Google DNS...`);
-        customResolver.resolve4(hostname)
-          .then(addresses => {
-            if (addresses && addresses.length > 0) {
-              console.log(`[DNS] Resolved ${hostname} to ${addresses[0]}`);
-              callback(null, addresses[0], 4);
-            } else {
-              console.warn(`[DNS] No addresses found for ${hostname}, falling back to system DNS`);
-              dns.lookup(hostname, lookupOptions, callback);
+    const req = https.request(
+      {
+        hostname: 'api.razorpay.com',
+        port: 443,
+        path: apiPath,
+        method: 'POST',
+        family: 4,
+        lookup: razorpayDnsLookup,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': payload.length,
+          Authorization: `Basic ${auth}`,
+        },
+      },
+      (res) => {
+        let responseBody = '';
+        res.on('data', (chunk) => {
+          responseBody += chunk;
+        });
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(responseBody);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              resolve(parsed);
+              return;
             }
-          })
-          .catch(err => {
-            console.error(`[DNS] Error resolving ${hostname}:`, err.message);
-            console.log(`[DNS] Falling back to system DNS for ${hostname}`);
-            dns.lookup(hostname, lookupOptions, callback);
-          });
-      },
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': data.length,
-        'Authorization': `Basic ${auth}`
-      }
-    };
-
-    const req = https.request(reqOptions, (res) => {
-      let body = '';
-      res.on('data', (chunk) => body += chunk);
-      res.on('end', () => {
-        try {
-          const parsedBody = JSON.parse(body);
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(parsedBody);
-          } else {
-            reject({ 
-              statusCode: res.statusCode, 
-              error: parsedBody.error || parsedBody,
-              message: parsedBody.error?.description || 'Razorpay API Error'
+            reject({
+              statusCode: res.statusCode,
+              error: parsed.error || parsed,
+              message: parsed.error?.description || 'Razorpay API Error',
             });
+          } catch {
+            reject({ statusCode: res.statusCode, message: 'Invalid JSON response from Razorpay' });
           }
-        } catch (e) {
-          reject({ statusCode: res.statusCode, message: 'Invalid JSON response from Razorpay' });
-        }
-      });
-    });
-
-    req.on('error', (e) => reject({ message: e.message, code: e.code }));
-    req.write(data);
-    req.end();
-  });
-};
-
-const createRazorpayPaymentLinkRest = (options) => {
-  return new Promise((resolve, reject) => {
-    const auth = Buffer.from(`${RAZORPAY_KEY_ID}:${RAZORPAY_KEY_SECRET}`).toString('base64');
-    const data = JSON.stringify(options);
-
-    const reqOptions = {
-      hostname: 'api.razorpay.com',
-      port: 443,
-      path: '/v1/payment_links',
-      method: 'POST',
-      family: 4, 
-      lookup: (hostname, lookupOptions, callback) => {
-        customResolver.resolve4(hostname).then(addresses => {
-          callback(null, addresses[0], 4);
-        }).catch(() => dns.lookup(hostname, lookupOptions, callback));
-      },
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': data.length,
-        'Authorization': `Basic ${auth}`
+        });
       }
-    };
+    );
 
-    const req = https.request(reqOptions, (res) => {
-      let body = '';
-      res.on('data', (chunk) => body += chunk);
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(body);
-          if (res.statusCode >= 200 && res.statusCode < 300) resolve(parsed);
-          else reject(parsed);
-        } catch (e) { reject(e); }
-      });
-    });
-    req.on('error', (e) => reject(e));
-    req.write(data);
+    req.on('error', (err) => reject({ message: err.message, code: err.code }));
+    req.write(payload);
     req.end();
   });
-};
+
+const createRazorpayOrderRest = (options) => razorpayApiRequest('/v1/orders', options);
+const createRazorpayPaymentLinkRest = (options) => razorpayApiRequest('/v1/payment_links', options);
 
 exports.createOrder = async (req, res) => {
   try {
@@ -149,11 +99,8 @@ exports.createOrder = async (req, res) => {
       notes: { userId, tier, originalAmount: amountInUsd, originalCurrency: 'USD' }
     };
 
-    console.log('[PAYMENT] Creating order via DNS-bypass REST...');
     const order = await createRazorpayOrderRest(orderOptions);
 
-    // Also create a Payment Link as a fallback for users with browser DNS issues
-    console.log('[PAYMENT] Creating fallback Payment Link...');
     let paymentLinkData = null;
     try {
       paymentLinkData = await createRazorpayPaymentLinkRest({
@@ -186,10 +133,9 @@ exports.createOrder = async (req, res) => {
       amount: order.amount,
       currency: order.currency,
       paymentLink: paymentLinkData?.short_url,
-      dnsHint: 'api.razorpay.com resolved to 15.206.197.168'
     });
   } catch (err) {
-    console.error('Detailed Razorpay Order Error:', err);
+    console.error('[Payment] Order creation failed:', err);
     res.status(500).json({ success: false, error: err.message || 'Payment initiation failed' });
   }
 };
@@ -252,12 +198,12 @@ exports.verifyRazorpayPayment = async (req, res) => {
         res.status(404).json({ success: false, message: 'Transaction not found' });
       }
     } else {
-      console.error(`Signature mismatch. Expected: ${expectedSignature}, Received: ${razorpay_signature}`);
-      res.status(400).json({ success: false, message: 'Invalid signature', expected: expectedSignature, received: razorpay_signature });
+      console.error('[Payment] Signature mismatch for order:', razorpay_order_id);
+      res.status(400).json({ success: false, message: 'Invalid signature' });
     }
   } catch (err) {
-    console.error('Razorpay Verification Error:', err);
-    res.status(500).json({ success: false, error: err.message, stack: err.stack });
+    console.error('[Payment] Verification error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 };
 

@@ -34,34 +34,26 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log(`[AUTH] Login attempt for email: ${email}`);
 
-    // Validate email & password
     if (!email || !password) {
-      console.log(`[AUTH] Missing email or password`);
       return res.status(400).json({ success: false, error: 'Please provide an email and password' });
     }
 
-    // Check for user
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
-      console.log(`[AUTH] User not found: ${email}`);
       return res.status(401).json({ success: false, error: 'Invalid credentials' });
     }
 
-    // Check if password matches
     const isMatch = await user.matchPassword(password);
 
     if (!isMatch) {
-      console.log(`[AUTH] Password mismatch for: ${email}`);
       return res.status(401).json({ success: false, error: 'Invalid credentials' });
     }
 
-    console.log(`[AUTH] Login successful for: ${email}`);
     sendTokenResponse(user, 200, res);
   } catch (err) {
-    console.error(`[AUTH] Login error:`, err);
+    console.error('[Auth] Login error:', err);
     res.status(400).json({
       success: false,
       error: err.message

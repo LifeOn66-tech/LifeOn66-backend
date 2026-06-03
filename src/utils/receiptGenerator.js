@@ -163,25 +163,23 @@ function buildReceiptHtml(data) {
 async function generateAndUploadReceipt(receiptData) {
   let browser;
   try {
-    console.log('[Receipt] Launching Puppeteer...');
     const { findChromeExecutable } = require('./puppeteerHelper');
     const executablePath = findChromeExecutable();
 
     const launchOptions = {
       headless: true,
       args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox', 
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--no-zygote',
         '--single-process',
-        '--disable-software-rasterizer'
+        '--disable-software-rasterizer',
       ],
     };
 
     if (executablePath) {
-      console.log(`[Receipt] Using explicit executablePath: ${executablePath}`);
       launchOptions.executablePath = executablePath;
     } else if (process.env.NODE_ENV === 'production' || process.env.PORT) {
       throw new Error(`Chrome Headless Shell executable not found in puppeteer_cache. Please trigger "Clear Build Cache & Deploy" on Render.`);
@@ -197,8 +195,6 @@ async function generateAndUploadReceipt(receiptData) {
       fullPage: true,
       omitBackground: false,
     });
-
-    console.log(`[Receipt] Image generated — ${imageBuffer.length} bytes`);
 
     // Upload to Cloudinary as a standard PNG image
     // This perfectly bypasses Cloudinary's 401 block on PDFs and ensures rich WhatsApp previews
@@ -225,7 +221,6 @@ async function generateAndUploadReceipt(receiptData) {
       readable.pipe(uploadStream);
     });
 
-    console.log('[Receipt] Uploaded to Cloudinary:', uploadResult.secure_url);
     return uploadResult.secure_url;
 
   } finally {

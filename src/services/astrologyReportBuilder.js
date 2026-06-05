@@ -12,19 +12,23 @@ const TIER_META = {
     label: 'Cosmic Explorer',
     badge: 'Free Plan',
     tagline: 'Basic insights into your cosmic blueprint.',
-    accent: '#111827',
+    accent: '#1e3a5f',
+    accentSoft: '#eef2ff',
   },
   premium: {
     label: 'Astral Navigator',
     badge: 'Premium Plan',
     tagline: 'Expanded cosmic blueprint analysis.',
-    accent: '#111827',
+    accent: '#0f766e',
+    accentSoft: '#ecfdf5',
   },
   professional: {
     label: 'Cosmic Master',
     badge: 'Professional Plan',
     tagline: 'Comprehensive personalized cosmic assessment.',
-    accent: '#111827',
+    accent: '#1e293b',
+    accentSoft: '#fffbeb',
+    accentGold: '#b45309',
   },
 };
 
@@ -43,11 +47,12 @@ function asParagraphs(texts) {
   return texts.filter(Boolean).map((t) => `<p>${t}</p>`).join('');
 }
 
-function imageFigure(src, label, analysis, tier) {
+function imageFigure(src, label, analysis, tier, variant = 'default') {
   if (!src) {
-    return `<div class="img-missing"><span>${label}</span><p>No image uploaded for this view.</p></div>`;
+    return `<div class="img-missing"><span class="cap-label">${label}</span><p>No image uploaded for this view.</p></div>`;
   }
   const safeSrc = src.replace(/"/g, '&quot;');
+  const frameClass = variant === 'face' ? 'img-frame face-frame' : variant === 'palm' ? 'img-frame palm-frame' : variant === 'gallery' ? 'img-frame gallery-frame' : 'img-frame';
   const detail = pickTierText(
     tier,
     analysis?.slice?.(0, 280) || 'Visual markers indicate distinctive energetic patterns relevant to your life path.',
@@ -55,10 +60,12 @@ function imageFigure(src, label, analysis, tier) {
     analysis || 'Advanced analysis of line depth, mount prominence, and structural balance suggests leadership capacity and strategic foresight.'
   );
   return `
-    <figure class="img-figure">
-      <img src="${safeSrc}" alt="${label}" crossorigin="anonymous" />
-      <figcaption><strong>${label}</strong></figcaption>
-      <div class="img-analysis">${detail}</div>
+    <figure class="img-figure ${variant !== 'default' ? `img-figure-${variant}` : ''}">
+      <div class="${frameClass}">
+        <img src="${safeSrc}" alt="${label}" loading="eager" decoding="sync" />
+      </div>
+      <figcaption><span class="cap-label">${label}</span></figcaption>
+      ${variant !== 'gallery' ? `<div class="img-analysis">${detail}</div>` : ''}
     </figure>`;
 }
 
@@ -104,16 +111,72 @@ function buildContent(analysis = {}, fullData = {}, tier, userName, userDetails 
   };
 }
 
-function sectionHeader(title) {
-  return `<div class="section-header"><span>${title}</span></div>`;
+function sectionHeader(title, index) {
+  const num = index != null ? String(index).padStart(2, '0') : '';
+  return `
+    <div class="section-header">
+      ${num ? `<span class="section-num">${num}</span>` : ''}
+      <span class="section-title">${title}</span>
+    </div>`;
 }
 
-function pageShell(body, pageNum, total, theme, footerText) {
+function featureGrid(items) {
+  return `<div class="feature-grid">${items.map((item) => `<div class="feature-item"><span class="check">✓</span><span>${item}</span></div>`).join('')}</div>`;
+}
+
+function statCard(label, value) {
+  return `<div class="stat-card"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
+}
+
+function brandCover(theme, userName, title, subtitle, inclusions) {
+  const reportId = `LO66-${Date.now().toString(36).toUpperCase().slice(-6)}`;
   return `
-    <div class="page">
-      ${body}
+    <div class="cover">
+      <div class="cover-band"></div>
+      <div class="cover-watermark">66</div>
+      <div class="cover-inner">
+        <div class="brand-row">
+          <div class="brand-logo">Life<span>On66</span></div>
+          <div class="badge">${theme.badge}</div>
+        </div>
+        <div class="cover-divider"></div>
+        <p class="tier-name">${theme.label}</p>
+        <h1>${title}</h1>
+        <p class="cover-subtitle">${subtitle}</p>
+        <div class="cover-meta">
+          <div class="meta-block">
+            <span class="meta-label">Prepared For</span>
+            <span class="meta-value">${userName}</span>
+          </div>
+          <div class="meta-block">
+            <span class="meta-label">Report Date</span>
+            <span class="meta-value">${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+          </div>
+          <div class="meta-block">
+            <span class="meta-label">Reference ID</span>
+            <span class="meta-value">${reportId}</span>
+          </div>
+          <div class="meta-block">
+            <span class="meta-label">Classification</span>
+            <span class="meta-value">Confidential</span>
+          </div>
+        </div>
+        ${inclusions ? `<div class="inclusions-panel"><p class="panel-title">Report Includes</p>${featureGrid(inclusions)}</div>` : ''}
+        <p class="cover-footer-note">This document is generated exclusively for the named recipient. Unauthorized distribution is prohibited.</p>
+      </div>
+    </div>`;
+}
+
+function pageShell(body, pageNum, total, footerText, isCover = false) {
+  const header = isCover
+    ? ''
+    : `<div class="page-header"><div class="ph-left">LifeOn66</div><div class="ph-right">Confidential Report</div></div>`;
+  return `
+    <div class="page${isCover ? ' page-cover' : ''}">
+      ${header}
+      <div class="page-content">${body}</div>
       <div class="footer">${footerText}</div>
-      <div class="page-num">${String(pageNum).padStart(2, '0')} / ${String(total).padStart(2, '0')}</div>
+      <div class="page-num">Page ${pageNum} of ${total}</div>
     </div>`;
 }
 
@@ -122,66 +185,57 @@ function buildFreePages(analysis, fullData, userName, userDetails, images) {
   const c = buildContent(analysis, fullData, 'free', userName, userDetails);
   const pages = [];
 
-  pages.push(`
-    <div class="cover">
-      <div class="badge">${theme.badge}</div>
-      <p class="tier-name">${theme.label}</p>
-      <h1>Personal Astrology Report</h1>
-      <h2>${theme.tagline}</h2>
-      <div class="cover-card">
-        <p class="cover-label">Prepared For</p>
-        <p class="cover-name">${userName}</p>
-        <p class="cover-date">${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-      </div>
-      <div class="inclusions-box">${asList(FREE_INCLUSIONS)}</div>
-    </div>`);
+  pages.push(brandCover(theme, userName, 'Personal Astrology Report', theme.tagline, FREE_INCLUSIONS));
 
   pages.push(`
-    ${sectionHeader('User Details & Plan Inclusions')}
-    <div class="glass-card">
+    ${sectionHeader('User Details & Plan Inclusions', 1)}
+    <div class="content-card">
+      <div class="stats-row">${statCard('Confidence Score', `${c.confidence}%`)}${statCard('Plan', theme.label)}</div>
       <table class="details-table">
         <tr><td>Full Name</td><td>${userName}</td></tr>
         <tr><td>Date of Birth</td><td>${userDetails.dateOfBirth || '—'}</td></tr>
         <tr><td>Time of Birth</td><td>${userDetails.timeOfBirth || '—'}</td></tr>
         <tr><td>Place of Birth</td><td>${userDetails.placeOfBirth || '—'}</td></tr>
-        <tr><td>Plan</td><td>${theme.label} (Free)</td></tr>
       </table>
-      <h3>Your Free Report Includes</h3>
-      ${asList(FREE_INCLUSIONS)}
+      <p class="panel-title">Included in Your Report</p>
+      ${featureGrid(FREE_INCLUSIONS)}
     </div>`);
 
   pages.push(`
-    ${sectionHeader('Table of Contents')}
-    <div class="glass-card toc">
-      ${['Introduction', 'Basic Astrology Overview', 'Palmistry Base Analysis', 'Face Reading Summary', 'All Uploaded Images Gallery', 'Personality & Career Outlook', 'Final Summary'].map((s, i) => `<div class="toc-row"><span>${i + 1}</span><span>${s}</span></div>`).join('')}
+    ${sectionHeader('Table of Contents', 2)}
+    <div class="content-card toc-card">
+      ${['Introduction', 'Basic Astrology Overview', 'Palmistry Base Analysis', 'Face Reading Summary', 'All Uploaded Images Gallery', 'Personality & Career Outlook', 'Final Summary'].map((s, i) => `<div class="toc-row"><span class="toc-num">${String(i + 1).padStart(2, '0')}</span><span class="toc-title">${s}</span><span class="toc-dots"></span><span class="toc-page">${String(i + 3).padStart(2, '0')}</span></div>`).join('')}
     </div>`);
 
   pages.push(`
-    ${sectionHeader('Introduction')}
-    <div class="glass-card">${asParagraphs([c.intro])}<div class="highlight">Analysis Confidence: <strong>${c.confidence}%</strong></div></div>`);
+    ${sectionHeader('Introduction', 3)}
+    <div class="content-card">
+      <div class="lead-text">${c.intro}</div>
+      <div class="highlight-box"><strong>Executive Note:</strong> This document integrates Vedic astrology, palmistry, and physiognomy into one cohesive personal assessment.</div>
+    </div>`);
 
   pages.push(`
-    ${sectionHeader('Basic Astrology Overview')}
-    <div class="glass-card">
+    ${sectionHeader('Basic Astrology Overview', 4)}
+    <div class="content-card">
       <p>${c.astrology}</p>
-      ${images.extra.filter((img) => /astro|chart|kundli|birth/i.test(img.label)).map((img) => imageFigure(img.url, img.label, c.astrology, 'free')).join('') || ''}
+      ${images.extra.filter((img) => /astro|chart|kundli|birth/i.test(img.label)).map((img) => imageFigure(img.url, img.label, c.astrology, 'free', 'default')).join('') || ''}
     </div>`);
 
   pages.push(`
-    ${sectionHeader('Palmistry Base Analysis')}
-    <div class="glass-card img-grid-2">
-      ${imageFigure(images.palmRight, 'Right Palm (Active Hand)', c.palmRight || c.palmBase, 'free')}
-      ${imageFigure(images.palmLeft, 'Left Palm (Innate Hand)', c.palmLeft || c.palmBase, 'free')}
-      ${images.palmBoth ? imageFigure(images.palmBoth, 'Both Palms Overview', c.palmBase, 'free') : ''}
+    ${sectionHeader('Palmistry Base Analysis', 5)}
+    <div class="content-card img-grid-2">
+      ${imageFigure(images.palmRight, 'Right Palm (Active Hand)', c.palmRight || c.palmBase, 'free', 'palm')}
+      ${imageFigure(images.palmLeft, 'Left Palm (Innate Hand)', c.palmLeft || c.palmBase, 'free', 'palm')}
+      ${images.palmBoth ? imageFigure(images.palmBoth, 'Both Palms Overview', c.palmBase, 'free', 'palm') : ''}
     </div>`);
 
   pages.push(`
-    ${sectionHeader('Face Reading Summary')}
-    <div class="glass-card">
-      ${imageFigure(images.faceCenter, 'Front Face', c.faceFront, 'free')}
+    ${sectionHeader('Face Reading Summary', 6)}
+    <div class="content-card">
+      ${imageFigure(images.faceCenter, 'Front Face', c.faceFront, 'free', 'face')}
       <div class="img-grid-2">
-        ${imageFigure(images.faceLeft, 'Left Profile', c.faceProfile || c.faceFront, 'free')}
-        ${imageFigure(images.faceRight, 'Right Profile', c.faceProfile || c.faceFront, 'free')}
+        ${imageFigure(images.faceLeft, 'Left Profile', c.faceProfile || c.faceFront, 'free', 'face')}
+        ${imageFigure(images.faceRight, 'Right Profile', c.faceProfile || c.faceFront, 'free', 'face')}
       </div>
     </div>`);
 
@@ -196,29 +250,36 @@ function buildFreePages(analysis, fullData, userName, userDetails, images) {
   ].filter(Boolean);
 
   pages.push(`
-    ${sectionHeader('All Uploaded Images')}
-    <div class="glass-card">
-      <p>Every image you submitted is embedded below with its dedicated analysis section reference.</p>
-      <div class="gallery-grid">${galleryItems.map((img) => imageFigure(img.url, img.label, 'Uploaded biological marker included in your cosmic assessment.', 'free')).join('')}</div>
-      ${!galleryItems.length ? '<p class="note">No images were attached to this request. Re-generate after uploading palm and face photos in the app.</p>' : ''}
+    ${sectionHeader('All Uploaded Images', 7)}
+    <div class="content-card">
+      <p class="section-intro">Every image submitted during your session is reproduced below for reference and verification.</p>
+      <div class="gallery-grid">${galleryItems.map((img) => imageFigure(img.url, img.label, 'Biological marker included in your assessment.', 'free', 'gallery')).join('')}</div>
+      ${!galleryItems.length ? '<p class="note">No images were found. Complete palm and face uploads before generating the report.</p>' : ''}
     </div>`);
 
   pages.push(`
-    ${sectionHeader('Personality, Career & Outlook')}
-    <div class="glass-card">
+    ${sectionHeader('Personality, Career & Outlook', 8)}
+    <div class="content-card">
       ${c.personality ? `<p>${c.personality}</p>` : ''}
-      ${asList(c.strengths.slice(0, 5))}
-      <p>${c.career || 'Leadership and analytical roles align strongest with your cosmic blueprint.'}</p>
-      <p>${c.love || 'Relationships benefit from emotional honesty and shared ambition.'}</p>
-      <p>${c.health || 'Prioritize rest and structured routines during high-stress phases.'}</p>
+      <p class="panel-title">Core Strengths</p>
+      <div class="tag-row">${c.strengths.slice(0, 5).map((s) => `<span class="tag">${s}</span>`).join('')}</div>
+      <p>${c.career || 'Leadership and analytical roles align strongest with your profile.'}</p>
+      <div class="two-col insight-row">
+        <div class="insight-card"><span class="insight-label">Relationships</span><p>${c.love || 'Emotional honesty and shared ambition support long-term partnership success.'}</p></div>
+        <div class="insight-card"><span class="insight-label">Wellbeing</span><p>${c.health || 'Structured rest and routine are essential during high-demand periods.'}</p></div>
+      </div>
     </div>`);
 
   pages.push(`
-    ${sectionHeader('Final Summary')}
-    <div class="glass-card">
+    ${sectionHeader('Final Summary', 9)}
+    <div class="content-card">
+      <p class="panel-title">Recommended Actions</p>
       ${asList((Array.isArray(c.remedies) ? c.remedies : ['Morning discipline', 'Weekly reflection']).slice(0, 3))}
-      <div class="conclusion-box"><p>${c.conclusion || `Summary for ${userName}: focus on mastery and consistent execution of your cosmic strengths.`}</p></div>
-      <p class="upgrade-note">Upgrade to Astral Navigator ($5) or Cosmic Master ($10) for 15–25 pages of advanced predictions, remedies, and house-level analysis.</p>
+      <div class="conclusion-box">
+        <p class="conclusion-label">Closing Assessment</p>
+        <p>${c.conclusion || `Summary for ${userName}: focus on mastery and consistent execution of your strengths.`}</p>
+      </div>
+      <p class="upgrade-note">Upgrade to Premium or Professional tiers for extended house analysis, dasha timelines, and 15–25 page depth.</p>
     </div>`);
 
   return { pages, theme, footer: 'LifeOn66 — Cosmic Explorer Report' };
@@ -229,19 +290,19 @@ function buildPremiumPages(analysis, fullData, userName, userDetails, images) {
   const c = buildContent(analysis, fullData, 'premium', userName, userDetails);
   const pages = [];
 
-  pages.push(`<div class="cover"><div class="badge">${theme.badge}</div><p class="tier-name">${theme.label}</p><h1>Final Astrology Report</h1><h2>${theme.tagline}</h2><div class="cover-card"><p class="cover-name">${userName}</p></div></div>`);
-  pages.push(`${sectionHeader('User Details')}<div class="glass-card"><table class="details-table"><tr><td>Name</td><td>${userName}</td></tr><tr><td>DOB</td><td>${userDetails.dateOfBirth || '—'}</td></tr><tr><td>Time</td><td>${userDetails.timeOfBirth || '—'}</td></tr><tr><td>Place</td><td>${userDetails.placeOfBirth || '—'}</td></tr></table></div>`);
-  pages.push(`${sectionHeader('Introduction')}<div class="glass-card">${asParagraphs([c.intro])}</div>`);
-  pages.push(`${sectionHeader('Basic Astrology Overview')}<div class="glass-card"><p>${c.astrology}</p></div>`);
-  pages.push(`${sectionHeader('Right Palm Analysis')}<div class="glass-card">${imageFigure(images.palmRight, 'Right Palm', c.palmRight, 'premium')}</div>`);
-  pages.push(`${sectionHeader('Left Palm Analysis')}<div class="glass-card">${imageFigure(images.palmLeft, 'Left Palm', c.palmLeft, 'premium')}${images.palmBoth ? imageFigure(images.palmBoth, 'Both Palms', c.palmBase, 'premium') : ''}</div>`);
-  pages.push(`${sectionHeader('Front Face Analysis')}<div class="glass-card">${imageFigure(images.faceCenter, 'Front Face', c.faceFront, 'premium')}</div>`);
-  pages.push(`${sectionHeader('Profile Face Analysis')}<div class="glass-card img-grid-2">${imageFigure(images.faceLeft, 'Left Profile', c.faceProfile, 'premium')}${imageFigure(images.faceRight, 'Right Profile', c.faceProfile, 'premium')}</div>`);
-  pages.push(`${sectionHeader('All Uploaded Images')}<div class="glass-card gallery-grid">${[images.palmRight, images.palmLeft, images.faceCenter, images.faceLeft, images.faceRight, ...images.extra.map((e) => e.url)].filter(Boolean).map((url, i) => imageFigure(url, `Image ${i + 1}`, c.astrology, 'premium')).join('')}</div>`);
-  pages.push(`${sectionHeader('Personality & Career')}<div class="glass-card">${asList(c.strengths)}<p>${c.career || ''}</p></div>`);
-  pages.push(`${sectionHeader('Love & Health')}<div class="glass-card"><p>${c.love || ''}</p><p>${c.health || ''}</p></div>`);
-  pages.push(`${sectionHeader('Strengths & Future')}<div class="glass-card two-col"><div><h3>Strengths</h3>${asList(c.strengths)}</div><div><h3>Challenges</h3>${asList(c.challenges)}</div></div>`);
-  pages.push(`${sectionHeader('Remedies & Conclusion')}<div class="glass-card">${asList(Array.isArray(c.remedies) ? c.remedies : [])}<div class="conclusion-box"><p>${c.conclusion || ''}</p></div></div>`);
+  pages.push(brandCover(theme, userName, 'Personal Astrology Report', theme.tagline, null));
+  pages.push(`${sectionHeader('User Details', 1)}<div class="content-card"><div class="stats-row">${statCard('Confidence', `${c.confidence}%`)}${statCard('Plan', theme.label)}</div><table class="details-table"><tr><td>Name</td><td>${userName}</td></tr><tr><td>DOB</td><td>${userDetails.dateOfBirth || '—'}</td></tr><tr><td>Time</td><td>${userDetails.timeOfBirth || '—'}</td></tr><tr><td>Place</td><td>${userDetails.placeOfBirth || '—'}</td></tr></table></div>`);
+  pages.push(`${sectionHeader('Introduction', 2)}<div class="content-card"><div class="lead-text">${c.intro}</div></div>`);
+  pages.push(`${sectionHeader('Basic Astrology Overview', 3)}<div class="content-card"><p>${c.astrology}</p></div>`);
+  pages.push(`${sectionHeader('Right Palm Analysis', 4)}<div class="content-card">${imageFigure(images.palmRight, 'Right Palm', c.palmRight, 'premium', 'palm')}</div>`);
+  pages.push(`${sectionHeader('Left Palm Analysis', 5)}<div class="content-card">${imageFigure(images.palmLeft, 'Left Palm', c.palmLeft, 'premium', 'palm')}${images.palmBoth ? imageFigure(images.palmBoth, 'Both Palms', c.palmBase, 'premium', 'palm') : ''}</div>`);
+  pages.push(`${sectionHeader('Front Face Analysis', 6)}<div class="content-card">${imageFigure(images.faceCenter, 'Front Face', c.faceFront, 'premium', 'face')}</div>`);
+  pages.push(`${sectionHeader('Profile Face Analysis', 7)}<div class="content-card img-grid-2">${imageFigure(images.faceLeft, 'Left Profile', c.faceProfile, 'premium', 'face')}${imageFigure(images.faceRight, 'Right Profile', c.faceProfile, 'premium', 'face')}</div>`);
+  pages.push(`${sectionHeader('All Uploaded Images', 8)}<div class="content-card gallery-grid">${[images.palmRight, images.palmLeft, images.faceCenter, images.faceLeft, images.faceRight, ...images.extra.map((e) => e.url)].filter(Boolean).map((url, i) => imageFigure(url, `Image ${i + 1}`, c.astrology, 'premium', 'gallery')).join('')}</div>`);
+  pages.push(`${sectionHeader('Personality & Career', 9)}<div class="content-card"><div class="tag-row">${c.strengths.map((s) => `<span class="tag">${s}</span>`).join('')}</div><p>${c.career || ''}</p></div>`);
+  pages.push(`${sectionHeader('Love & Health', 10)}<div class="content-card two-col insight-row"><div class="insight-card"><span class="insight-label">Love</span><p>${c.love || ''}</p></div><div class="insight-card"><span class="insight-label">Health</span><p>${c.health || ''}</p></div></div>`);
+  pages.push(`${sectionHeader('Strengths & Future', 11)}<div class="content-card two-col"><div><p class="panel-title">Strengths</p>${asList(c.strengths)}</div><div><p class="panel-title">Challenges</p>${asList(c.challenges)}</div></div>`);
+  pages.push(`${sectionHeader('Remedies & Conclusion', 12)}<div class="content-card">${asList(Array.isArray(c.remedies) ? c.remedies : [])}<div class="conclusion-box"><p class="conclusion-label">Final Word</p><p>${c.conclusion || ''}</p></div></div>`);
 
   return { pages, theme, footer: 'LifeOn66 — Astral Navigator Report' };
 }
@@ -251,19 +312,19 @@ function buildProfessionalPages(analysis, fullData, userName, userDetails, image
   const theme = TIER_META.professional;
   const c = buildContent(analysis, fullData, 'professional', userName, userDetails);
 
-  premium.pages[0] = premium.pages[0].replace(TIER_META.premium.badge, theme.badge).replace(TIER_META.premium.label, theme.label);
+  premium.pages[0] = brandCover(theme, userName, 'Personal Astrology Report', theme.tagline, null);
 
   const extra = [
-    `${sectionHeader('Planetary Dashas & Yogas')}<div class="glass-card">${c.dashas.length ? asList(c.dashas.map((d) => `${d.planet || ''} ${d.period || ''}: ${d.effect || ''}`)) : asList(['Jupiter Mahadasha: expansion', 'Gaja Kesari Yoga: wealth'])}</div>`,
-    `${sectionHeader('Houses 1–6')}<div class="glass-card house-grid">${[1, 2, 3, 4, 5, 6].map((h) => `<div class="house-card"><strong>House ${h}</strong><p>Detailed karmic significance.</p></div>`).join('')}</div>`,
-    `${sectionHeader('Houses 7–12')}<div class="glass-card house-grid">${[7, 8, 9, 10, 11, 12].map((h) => `<div class="house-card"><strong>House ${h}</strong><p>${h === 10 ? 'Peak career authority.' : 'Life domain analysis.'}</p></div>`).join('')}</div>`,
-    `${sectionHeader('Advanced Chiromancy')}<div class="glass-card">${imageFigure(images.palmRight, 'Mount Analysis', c.palmRight, 'professional')}</div>`,
-    `${sectionHeader('Micro-Physiognomy')}<div class="glass-card">${imageFigure(images.faceCenter, 'Facial Zones', c.faceFront, 'professional')}</div>`,
-    `${sectionHeader('3-Year Roadmap')}<div class="glass-card">${c.threeYear.length ? asList(c.threeYear.map((y) => `${y.year || y.title}: ${y.milestone || y.focus || ''}`)) : asList(['Year 1: Mastery', 'Year 2: Leadership', 'Year 3: Scale'])}</div>`,
-    `${sectionHeader('Transits & Timing')}<div class="glass-card"><p>${c.planets.length ? c.planets.slice(0, 5).map((p) => `${p.planet} in ${p.sign}`).join(', ') : 'Jupiter transits favor expansion.'}</p></div>`,
-    `${sectionHeader('Daily Protocol')}<div class="glass-card">${asList(['Morning: deep work', 'Midday: leadership', 'Evening: review'])}</div>`,
-    `${sectionHeader('Extended Remedies')}<div class="glass-card">${asList(Array.isArray(c.remedies) ? c.remedies : ['Saturday discipline', 'Philanthropy', 'Exercise'])}</div>`,
-    `${sectionHeader('Master Conclusion')}<div class="glass-card conclusion-box"><p>${c.conclusion || `${userName}, your cosmic path is clear — execute with daily discipline.`}</p></div>`,
+    `${sectionHeader('Planetary Dashas & Yogas', 13)}<div class="content-card">${c.dashas.length ? asList(c.dashas.map((d) => `${d.planet || ''} ${d.period || ''}: ${d.effect || ''}`)) : asList(['Jupiter Mahadasha: expansion', 'Gaja Kesari Yoga: wealth'])}</div>`,
+    `${sectionHeader('Houses 1–6', 14)}<div class="content-card house-grid">${[1, 2, 3, 4, 5, 6].map((h) => `<div class="house-card"><strong>House ${h}</strong><p>Detailed karmic significance.</p></div>`).join('')}</div>`,
+    `${sectionHeader('Houses 7–12', 15)}<div class="content-card house-grid">${[7, 8, 9, 10, 11, 12].map((h) => `<div class="house-card"><strong>House ${h}</strong><p>${h === 10 ? 'Peak career authority.' : 'Life domain analysis.'}</p></div>`).join('')}</div>`,
+    `${sectionHeader('Advanced Chiromancy', 16)}<div class="content-card">${imageFigure(images.palmRight, 'Mount Analysis', c.palmRight, 'professional', 'palm')}</div>`,
+    `${sectionHeader('Micro-Physiognomy', 17)}<div class="content-card">${imageFigure(images.faceCenter, 'Facial Zones', c.faceFront, 'professional', 'face')}</div>`,
+    `${sectionHeader('3-Year Roadmap', 18)}<div class="content-card">${c.threeYear.length ? asList(c.threeYear.map((y) => `${y.year || y.title}: ${y.milestone || y.focus || ''}`)) : asList(['Year 1: Mastery', 'Year 2: Leadership', 'Year 3: Scale'])}</div>`,
+    `${sectionHeader('Transits & Timing', 19)}<div class="content-card"><p>${c.planets.length ? c.planets.slice(0, 5).map((p) => `${p.planet} in ${p.sign}`).join(', ') : 'Jupiter transits favor expansion.'}</p></div>`,
+    `${sectionHeader('Daily Protocol', 20)}<div class="content-card">${asList(['Morning: deep work', 'Midday: leadership', 'Evening: review'])}</div>`,
+    `${sectionHeader('Extended Remedies', 21)}<div class="content-card">${asList(Array.isArray(c.remedies) ? c.remedies : ['Saturday discipline', 'Philanthropy', 'Exercise'])}</div>`,
+    `${sectionHeader('Master Conclusion', 22)}<div class="content-card conclusion-box"><p class="conclusion-label">Master Verdict</p><p>${c.conclusion || `${userName}, your path is clear — execute with daily discipline.`}</p></div>`,
   ];
 
   return { pages: [...premium.pages, ...extra], theme, footer: 'LifeOn66 — Cosmic Master Report' };
@@ -281,7 +342,10 @@ function createHTMLContent(analysis, language, fullData, tier, userName, userDet
   const fontFamily = language === 'hi' ? "'Noto Sans Devanagari', sans-serif" : "'Inter', 'Segoe UI', Roboto, sans-serif";
   const { pages, theme, footer } = buildPagesForTier(analysis, fullData, tier, userName, userDetails, images);
   const total = pages.length;
-  const styledPages = pages.map((body, i) => pageShell(body, i + 1, total, theme, footer)).join('');
+  const styledPages = pages.map((body, i) => pageShell(body, i + 1, total, footer, i === 0)).join('');
+  const accent = theme.accent || '#1e3a5f';
+  const accentSoft = theme.accentSoft || '#eef2ff';
+  const accentGold = theme.accentGold || accent;
 
   return `<!DOCTYPE html>
 <html lang="${language}">
@@ -289,50 +353,137 @@ function createHTMLContent(analysis, language, fullData, tier, userName, userDet
   <meta charset="UTF-8" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
   <style>
+    :root {
+      --ink: #0f172a;
+      --ink-muted: #475569;
+      --ink-light: #64748b;
+      --border: #e2e8f0;
+      --surface: #f8fafc;
+      --accent: ${accent};
+      --accent-soft: ${accentSoft};
+      --accent-gold: ${accentGold};
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { size: A4; margin: 12mm; }
-    body { font-family: ${fontFamily}; color: #1f2937; background: #ffffff; width: 210mm; margin: 0 auto; }
-    .page { width: 210mm; min-height: 297mm; padding: 18mm 16mm 22mm; position: relative; page-break-after: always; background: #ffffff; }
-    .cover { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 240mm; border: 1px solid #e5e7eb; border-radius: 4px; padding: 48px 40px; background: #ffffff; }
-    .badge { display: inline-block; color: #374151; background: #f9fafb; border: 1px solid #d1d5db; padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 12px; letter-spacing: 0.5px; margin-bottom: 24px; text-transform: uppercase; }
-    .tier-name { color: #111827; font-size: 14px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 16px; }
-    h1 { font-family: 'Playfair Display', serif; font-size: 36px; color: #111827; line-height: 1.2; margin-bottom: 12px; font-weight: 700; }
-    h2 { font-size: 16px; color: #6b7280; font-weight: 400; margin-bottom: 36px; max-width: 85%; line-height: 1.6; }
-    h3 { color: #111827; font-size: 13px; margin: 18px 0 8px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; }
-    .cover-card { margin-top: 40px; padding: 28px 36px; background: #f9fafb; border-radius: 4px; border: 1px solid #e5e7eb; width: 100%; max-width: 440px; }
-    .inclusions-box { margin-top: 32px; text-align: left; width: 100%; max-width: 440px; padding: 20px 24px; background: #ffffff; border-radius: 4px; border: 1px solid #e5e7eb; }
-    .cover-label { font-size: 11px; letter-spacing: 1.5px; color: #6b7280; text-transform: uppercase; font-weight: 600; }
-    .cover-name { font-size: 26px; font-weight: 700; color: #111827; margin: 10px 0 6px; }
-    .cover-date { color: #6b7280; font-size: 14px; }
-    .section-header { margin-bottom: 18px; padding-bottom: 8px; border-bottom: 2px solid #111827; }
-    .section-header span { font-size: 16px; font-weight: 700; color: #111827; text-transform: uppercase; letter-spacing: 0.6px; }
-    .glass-card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 4px; padding: 24px; }
-    .glass-card p { margin-bottom: 12px; line-height: 1.75; font-size: 14px; color: #374151; }
-    .details-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px; }
-    .details-table td { padding: 10px 0; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
-    .details-table td:first-child { color: #6b7280; width: 42%; font-weight: 500; }
-    .details-table td:last-child { color: #111827; font-weight: 600; }
-    .toc-row { display: flex; gap: 16px; padding: 10px 0; border-bottom: 1px solid #f3f4f6; font-size: 14px; color: #374151; }
-    .toc-row span:first-child { color: #111827; font-weight: 700; min-width: 24px; }
-    .img-figure { margin-bottom: 20px; break-inside: avoid; }
-    .img-figure img { width: 100%; max-height: 280px; min-height: 120px; object-fit: contain; background: #f9fafb; border-radius: 4px; border: 1px solid #e5e7eb; display: block; }
-    .img-figure figcaption { margin-top: 10px; color: #111827; font-size: 13px; font-weight: 600; }
-    .img-analysis { margin-top: 8px; font-size: 13px; line-height: 1.7; color: #4b5563; }
-    .img-missing { padding: 24px; text-align: center; border: 1px dashed #d1d5db; border-radius: 4px; color: #9ca3af; margin-bottom: 14px; min-height: 80px; background: #f9fafb; font-size: 13px; }
-    .img-grid-2, .gallery-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .gallery-grid { grid-template-columns: 1fr; }
-    .bullet-list { margin: 10px 0 10px 20px; color: #374151; font-size: 14px; line-height: 1.8; }
-    .bullet-list li { margin-bottom: 4px; }
-    .highlight { margin-top: 16px; padding: 14px 16px; background: #f9fafb; border-left: 3px solid #111827; border-radius: 0 4px 4px 0; color: #374151; font-size: 14px; }
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    .house-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .house-card { padding: 14px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 13px; color: #374151; }
-    .house-card strong { color: #111827; display: block; margin-bottom: 6px; }
-    .conclusion-box { padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; margin-top: 16px; }
-    .conclusion-box p { color: #111827; font-weight: 500; margin-bottom: 0; }
-    .upgrade-note, .note { margin-top: 16px; font-size: 12px; color: #6b7280; line-height: 1.6; }
-    .footer { position: absolute; bottom: 10mm; left: 16mm; right: 16mm; text-align: center; font-size: 10px; color: #9ca3af; border-top: 1px solid #f3f4f6; padding-top: 8px; }
-    .page-num { position: absolute; bottom: 10mm; right: 16mm; font-size: 10px; color: #6b7280; font-weight: 500; }
+    @page { size: A4; margin: 0; }
+    body { font-family: ${fontFamily}; color: var(--ink); background: #fff; width: 210mm; margin: 0 auto; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+    .page { width: 210mm; min-height: 297mm; position: relative; page-break-after: always; background: #fff; display: flex; flex-direction: column; }
+    .page-cover { padding: 0; }
+    .page-header { display: flex; justify-content: space-between; align-items: center; padding: 10mm 14mm 0; border-bottom: 1px solid var(--border); margin-bottom: 6mm; }
+    .ph-left { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; color: var(--accent); text-transform: uppercase; }
+    .ph-right { font-size: 10px; color: var(--ink-light); letter-spacing: 0.5px; }
+    .page-content { flex: 1; padding: 0 14mm 18mm; }
+
+    .cover { position: relative; overflow: hidden; }
+    .cover-band { height: 10mm; background: linear-gradient(90deg, var(--accent) 0%, var(--accent-gold) 100%); width: 100%; }
+    .cover-watermark { position: absolute; right: -20mm; top: 40mm; font-size: 180px; font-weight: 900; color: var(--accent); opacity: 0.04; line-height: 1; pointer-events: none; font-family: 'Playfair Display', serif; }
+    .cover-inner { padding: 14mm 14mm 12mm; min-height: calc(297mm - 10mm); display: flex; flex-direction: column; position: relative; z-index: 1; }
+    .brand-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10mm; }
+    .cover-divider { width: 48px; height: 4px; background: linear-gradient(90deg, var(--accent), var(--accent-gold)); border-radius: 2px; margin-bottom: 10mm; }
+    .cover-footer-note { margin-top: 10mm; font-size: 9px; color: var(--ink-light); line-height: 1.5; border-top: 1px solid var(--border); padding-top: 8px; }
+    .brand-logo { font-size: 22px; font-weight: 800; color: var(--ink); letter-spacing: -0.5px; }
+    .brand-logo span { color: var(--accent); }
+    .badge { font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border: 1px solid #c7d2fe; padding: 6px 14px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.6px; }
+    .tier-name { font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--ink-light); margin-bottom: 10px; }
+    h1 { font-family: 'Playfair Display', serif; font-size: 40px; line-height: 1.15; color: var(--ink); margin-bottom: 12px; font-weight: 700; max-width: 90%; }
+    .cover-subtitle { font-size: 16px; color: var(--ink-muted); line-height: 1.65; max-width: 85%; margin-bottom: 14mm; }
+    .cover-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10mm; }
+    .meta-block { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; }
+    .meta-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-light); font-weight: 600; margin-bottom: 6px; }
+    .meta-value { display: block; font-size: 15px; font-weight: 700; color: var(--ink); }
+    .inclusions-panel { margin-top: auto; border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; background: var(--surface); }
+    .panel-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin-bottom: 12px; }
+
+    .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid var(--accent); }
+    .section-num { font-size: 22px; font-weight: 800; color: var(--accent); line-height: 1; min-width: 32px; }
+    .section-title { font-size: 15px; font-weight: 700; color: var(--ink); text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .content-card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; box-shadow: 0 1px 3px rgba(15,23,42,0.04); }
+    .content-card p, .lead-text { font-size: 14px; line-height: 1.8; color: var(--ink-muted); margin-bottom: 12px; }
+    .lead-text { font-size: 15px; color: var(--ink); line-height: 1.85; }
+    .section-intro { font-size: 13px; color: var(--ink-light); margin-bottom: 14px; }
+
+    .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; }
+    .stat-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--ink-light); font-weight: 600; }
+    .stat-value { display: block; font-size: 20px; font-weight: 800; color: var(--accent); margin-top: 4px; }
+
+    .details-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .details-table td { padding: 11px 8px; border-bottom: 1px solid #f1f5f9; }
+    .details-table tr:last-child td { border-bottom: none; }
+    .details-table td:first-child { color: var(--ink-light); width: 38%; font-weight: 500; }
+    .details-table td:last-child { color: var(--ink); font-weight: 600; }
+
+    .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+    .feature-item { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--ink-muted); line-height: 1.5; }
+    .check { color: var(--accent); font-weight: 800; flex-shrink: 0; }
+
+    .toc-row { display: flex; align-items: baseline; gap: 10px; padding: 11px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+    .toc-num { font-weight: 800; color: var(--accent); min-width: 28px; }
+    .toc-title { color: var(--ink); font-weight: 500; }
+    .toc-dots { flex: 1; border-bottom: 1px dotted #cbd5e1; margin: 0 8px 3px; min-width: 20px; }
+    .toc-page { font-weight: 700; color: var(--ink-light); font-size: 12px; min-width: 24px; text-align: right; }
+
+    .img-figure { margin-bottom: 18px; break-inside: avoid; page-break-inside: avoid; }
+    .img-frame {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 120px;
+    }
+    .palm-frame { aspect-ratio: 4 / 3; max-height: 240px; background: var(--surface); }
+    .face-frame { aspect-ratio: 3 / 4; max-height: 320px; background: var(--surface); }
+    .gallery-frame { aspect-ratio: 1 / 1; max-height: 200px; background: var(--surface); }
+    .img-frame img {
+      width: 100%;
+      height: 100%;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      object-position: center;
+      display: block;
+      image-rendering: auto;
+    }
+    .cap-label { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; }
+    .img-figure figcaption { margin-top: 8px; }
+    .img-analysis { margin-top: 8px; font-size: 13px; line-height: 1.7; color: var(--ink-muted); padding-left: 10px; border-left: 3px solid var(--border); }
+    .img-missing { padding: 28px; text-align: center; border: 1px dashed var(--border); border-radius: 6px; color: var(--ink-light); background: var(--surface); font-size: 13px; }
+
+    .img-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .gallery-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+
+    .bullet-list { margin: 8px 0 8px 18px; color: var(--ink-muted); font-size: 14px; line-height: 1.85; }
+    .bullet-list li { margin-bottom: 6px; }
+
+    .highlight-box { margin-top: 14px; padding: 14px 16px; background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 6px 6px 0; font-size: 13px; color: var(--ink-muted); line-height: 1.7; }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .tag { font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border: 1px solid #c7d2fe; padding: 5px 12px; border-radius: 20px; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .insight-row { margin-top: 14px; }
+    .insight-card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+    .insight-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--accent); margin-bottom: 8px; }
+    .insight-card p { font-size: 13px; margin: 0; line-height: 1.65; }
+
+    .house-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .house-card { padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+    .house-card strong { color: var(--accent); display: block; margin-bottom: 4px; font-size: 12px; }
+    .house-card p { margin: 0; color: var(--ink-muted); line-height: 1.55; }
+
+    .conclusion-box { margin-top: 16px; padding: 18px 20px; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; }
+    .conclusion-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin-bottom: 8px; }
+    .conclusion-box p:last-child { color: var(--ink); font-weight: 500; line-height: 1.75; margin: 0; }
+
+    .upgrade-note, .note { margin-top: 14px; font-size: 12px; color: var(--ink-light); line-height: 1.6; font-style: italic; }
+
+    .footer { position: absolute; bottom: 8mm; left: 14mm; right: 14mm; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 6px; letter-spacing: 0.3px; }
+    .page-num { position: absolute; bottom: 8mm; right: 14mm; font-size: 9px; color: var(--ink-light); font-weight: 600; }
   </style>
 </head>
 <body>${styledPages}</body>

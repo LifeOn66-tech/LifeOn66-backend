@@ -1,6 +1,8 @@
 const pdfService = require('../services/pdfGeneratorService');
 const { collectAllImages } = require('../utils/imageResolver');
+const { enrichReportData } = require('../utils/reportDataResolver');
 const User = require('../models/User');
+
 exports.generateReport = async (req, res) => {
   try {
     const { language = 'en', analysis, fullData, tier } = req.body;
@@ -11,9 +13,8 @@ exports.generateReport = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // Determine the actual tier allowed for this user based on their database record
     const userTier = user.subscriptionTier || 'free';
-    
+
     let finalTier = 'free';
     let isAuthorized = false;
 
@@ -39,23 +40,21 @@ exports.generateReport = async (req, res) => {
       });
     }
 
-    const images = collectAllImages(fullData);
-    const imageCount = [
-      images.palmRight,
-      images.palmLeft,
-      images.palmBoth,
-      images.faceCenter,
-      images.faceLeft,
-      images.faceRight,
-      ...(images.extra || []).map((e) => e.url),
-    ].filter(Boolean).length;
+    const enriched = await enrichReportData(userId, analysis, fullData);
 
-    console.log(`[Report] Generating ${finalTier} PDF for ${user.fullName} (${imageCount} images in payload)`);
+    console.log(
+      `[Report] Generating ${finalTier} PDF for ${user.fullName} — images in request: ${enriched.imageCount.before}, after DB merge: ${enriched.imageCount.after}`,
+      enriched.sources
+    );
+
+    if (enriched.imageCount.after === 0) {
+      console.warn('[Report] No images found in request or database. PDF will show placeholders.');
+    }
 
     const pdfBuffer = await pdfService.generatePDF(
-      analysis,
+      enriched.analysis,
       language,
-      fullData,
+      enriched.fullData,
       finalTier,
       user.fullName,
       {

@@ -3,19 +3,45 @@ const { createHTMLContent } = require('./astrologyReportBuilder');
 const { prepareReportImages } = require('../utils/imageResolver');
 
 async function waitForImages(page) {
-  await page.evaluate(async () => {
+  const result = await page.evaluate(async () => {
     const imgs = Array.from(document.images);
+    const report = [];
+
     await Promise.all(
-      imgs.map((img) => {
-        if (img.complete && img.naturalHeight > 0) return Promise.resolve();
-        return new Promise((resolve) => {
-          img.onload = resolve;
-          img.onerror = resolve;
-          setTimeout(resolve, 8000);
-        });
-      })
+      imgs.map(
+        (img) =>
+          new Promise((resolve) => {
+            const finish = () => {
+              report.push({
+                alt: img.alt || 'unnamed',
+                ok: img.complete && img.naturalWidth > 0 && img.naturalHeight > 0,
+                width: img.naturalWidth,
+                height: img.naturalHeight,
+              });
+              resolve();
+            };
+            if (img.complete) {
+              finish();
+              return;
+            }
+            img.onload = finish;
+            img.onerror = finish;
+            setTimeout(finish, 12000);
+          })
+      )
     );
+
+    return report;
   });
+
+  const loaded = result.filter((r) => r.ok).length;
+  const failed = result.filter((r) => !r.ok);
+  console.log(`[PDF] Images in DOM: ${result.length}, loaded: ${loaded}, failed: ${failed.length}`);
+  if (failed.length) {
+    console.warn('[PDF] Failed images:', failed.map((f) => f.alt).join(', '));
+  }
+
+  return { loaded, failed: failed.length, details: result };
 }
 
 async function generatePDF(analysis, language, fullData, tier, userName, userDetails = {}) {
@@ -24,18 +50,14 @@ async function generatePDF(analysis, language, fullData, tier, userName, userDet
     const { findChromeExecutable } = require('../utils/puppeteerHelper');
     const executablePath = findChromeExecutable();
 
-    const resolvedImages = await prepareReportImages(fullData);
-    const imageCount = [
-      resolvedImages.palmRight,
-      resolvedImages.palmLeft,
-      resolvedImages.palmBoth,
-      resolvedImages.faceCenter,
-      resolvedImages.faceLeft,
-      resolvedImages.faceRight,
-      ...(resolvedImages.extra || []).map((e) => e.url),
-    ].filter(Boolean).length;
+    const { images: resolvedImages, stats } = await prepareReportImages(fullData);
 
-    console.log(`[PDF] Tier: ${tier} | Images resolved: ${imageCount}`);
+    console.log(`[PDF] Tier: ${tier} | Collected: ${stats.collected} | Inlined: ${stats.resolved}`);
+    stats.slots.forEach((slot) => {
+      if (slot.found || slot.inlined) {
+        console.log(`[PDF]   ${slot.label}: found=${slot.found} inlined=${slot.inlined}`);
+      }
+    });
 
     const launchOptions = {
       headless: true,
@@ -60,15 +82,18 @@ async function generatePDF(analysis, language, fullData, tier, userName, userDet
 
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+
     const html = createHTMLContent(analysis, language, fullData, tier, userName, userDetails, resolvedImages);
 
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 90000 });
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 120000 });
     await waitForImages(page);
 
     return await page.pdf({
       format: 'A4',
       printBackground: true,
-      margin: { top: '8mm', right: '8mm', bottom: '8mm', left: '8mm' },
+      preferCSSPageSize: true,
+      margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
     });
   } catch (error) {
     console.error('[PDF] Generation failed:', error);

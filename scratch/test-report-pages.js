@@ -7,7 +7,7 @@ async function main() {
     face: { images: { center: 'https://picsum.photos/seed/face/600/800', left: 'https://picsum.photos/seed/fl/600/800', right: 'https://picsum.photos/seed/fr/600/800' } },
   };
 
-  const images = await prepareReportImages(fullData);
+  const { images } = await prepareReportImages(fullData);
 
   for (const tier of ['free', 'premium', 'professional']) {
     const html = createHTMLContent({ confidenceScore: 92 }, 'en', fullData, tier, 'Test User', {}, images);

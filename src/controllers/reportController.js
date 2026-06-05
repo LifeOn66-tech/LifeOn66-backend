@@ -1,6 +1,6 @@
 const pdfService = require('../services/pdfGeneratorService');
+const { collectAllImages } = require('../utils/imageResolver');
 const User = require('../models/User');
-
 exports.generateReport = async (req, res) => {
   try {
     const { language = 'en', analysis, fullData, tier } = req.body;
@@ -39,12 +39,30 @@ exports.generateReport = async (req, res) => {
       });
     }
 
+    const images = collectAllImages(fullData);
+    const imageCount = [
+      images.palmRight,
+      images.palmLeft,
+      images.palmBoth,
+      images.faceCenter,
+      images.faceLeft,
+      images.faceRight,
+      ...(images.extra || []).map((e) => e.url),
+    ].filter(Boolean).length;
+
+    console.log(`[Report] Generating ${finalTier} PDF for ${user.fullName} (${imageCount} images in payload)`);
+
     const pdfBuffer = await pdfService.generatePDF(
-      analysis, 
-      language, 
-      fullData, 
-      finalTier, 
-      user.fullName
+      analysis,
+      language,
+      fullData,
+      finalTier,
+      user.fullName,
+      {
+        dateOfBirth: user.dateOfBirth,
+        timeOfBirth: user.timeOfBirth,
+        placeOfBirth: user.placeOfBirth,
+      }
     );
 
     res.set({

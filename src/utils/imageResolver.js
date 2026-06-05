@@ -5,8 +5,52 @@ const IMAGE_KEY_PATTERN = /(right|left|both|center|front|face|palm|profile|image
 
 function extractImageString(value) {
   if (typeof value === 'string') return value.trim();
+  if (Buffer.isBuffer(value)) {
+    return `data:${detectMimeFromBase64(value.toString('base64'))};base64,${value.toString('base64')}`;
+  }
   if (!value || typeof value !== 'object') return '';
+  if (value.buffer && Buffer.isBuffer(value.buffer)) {
+    return `data:image/jpeg;base64,${value.buffer.toString('base64')}`;
+  }
   return String(value.data || value.url || value.src || value.base64 || value.image || '').trim();
+}
+
+function extractImagesFromReadingDoc(doc) {
+  if (!doc) return {};
+  const found = {};
+  const slotMap = {
+    right: 'right',
+    left: 'left',
+    both: 'both',
+    center: 'center',
+    front: 'center',
+    rightpalm: 'right',
+    leftpalm: 'left',
+    facecenter: 'center',
+    faceleft: 'left',
+    faceright: 'right',
+  };
+
+  if (doc.images && typeof doc.images === 'object') {
+    for (const [key, value] of Object.entries(doc.images)) {
+      const normalized = normalizeToDataUrl(value);
+      if (isUsableImageSrc(normalized)) {
+        const slot = slotMap[key.toLowerCase()] || key;
+        found[slot] = normalized;
+      }
+    }
+  }
+
+  for (const [key, value] of Object.entries(doc)) {
+    if (['_id', 'user', 'createdAt', '__v', 'images'].includes(key)) continue;
+    const str = extractImageString(value);
+    if (isUsableImageSrc(str) && IMAGE_KEY_PATTERN.test(key)) {
+      const slot = slotMap[key.toLowerCase()] || key;
+      found[slot] = normalizeToDataUrl(str);
+    }
+  }
+
+  return found;
 }
 
 function isRawBase64(value) {
@@ -286,10 +330,22 @@ async function prepareReportImages(fullData = {}) {
   return { images: resolved, stats };
 }
 
+function normalizeReadingImages(images = {}) {
+  if (!images || typeof images !== 'object') return {};
+  const out = {};
+  for (const [key, value] of Object.entries(images)) {
+    const normalized = normalizeToDataUrl(value);
+    if (isUsableImageSrc(normalized)) out[key] = normalized;
+  }
+  return out;
+}
+
 module.exports = {
   collectAllImages,
   prepareReportImages,
   isUsableImageSrc,
   normalizeToDataUrl,
   extractImageString,
+  extractImagesFromReadingDoc,
+  normalizeReadingImages,
 };

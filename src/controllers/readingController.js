@@ -2,6 +2,8 @@ const AstrologyReading = require('../models/AstrologyReading');
 const PalmistryReading = require('../models/PalmistryReading');
 const FaceReading = require('../models/FaceReading');
 const CareerInsight = require('../models/CareerInsight');
+const { normalizeReadingImages } = require('../utils/imageResolver');
+const { getOrBuildCareerInsight } = require('../utils/reportDataResolver');
 
 // @desc    Save astrology reading
 // @route   POST /api/readings/astrology
@@ -22,6 +24,9 @@ exports.saveAstrologyReading = async (req, res) => {
 exports.savePalmistryReading = async (req, res) => {
   try {
     req.body.user = req.user.id;
+    if (req.body.images) {
+      req.body.images = normalizeReadingImages(req.body.images);
+    }
     const reading = await PalmistryReading.create(req.body);
     res.status(201).json({ success: true, data: reading });
   } catch (err) {
@@ -35,6 +40,9 @@ exports.savePalmistryReading = async (req, res) => {
 exports.saveFaceReading = async (req, res) => {
   try {
     req.body.user = req.user.id;
+    if (req.body.images) {
+      req.body.images = normalizeReadingImages(req.body.images);
+    }
     const reading = await FaceReading.create(req.body);
     res.status(201).json({ success: true, data: reading });
   } catch (err) {
@@ -60,11 +68,27 @@ exports.saveCareerInsight = async (req, res) => {
 // @access  Private
 exports.getCareerInsight = async (req, res) => {
   try {
-    const insight = await CareerInsight.findOne({ user: req.user.id }).sort({ createdAt: -1 });
-    if (!insight) {
-      return res.status(404).json({ success: false, error: 'Insight not found' });
+    const result = await getOrBuildCareerInsight(req.user.id);
+
+    if (!result) {
+      return res.status(200).json({
+        success: true,
+        synthesized: true,
+        data: {
+          synthesizedRecommendation:
+            'Complete your astrology, palmistry, and face readings for a fully personalized report.',
+          confidenceScore: 80,
+          topCareerPaths: [],
+          strengths: [],
+        },
+      });
     }
-    res.status(200).json({ success: true, data: insight });
+
+    res.status(200).json({
+      success: true,
+      synthesized: result.synthesized,
+      data: result.data,
+    });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }

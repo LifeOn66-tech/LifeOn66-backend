@@ -58,9 +58,9 @@ exports.generateReport = async (req, res) => {
       finalTier,
       user.fullName,
       {
-        dateOfBirth: user.dateOfBirth,
-        timeOfBirth: user.timeOfBirth,
-        placeOfBirth: user.placeOfBirth,
+        dateOfBirth: user.dateOfBirth || fullData?.astrology?.dateOfBirth || req.body?.userDetails?.dateOfBirth,
+        timeOfBirth: user.timeOfBirth || fullData?.astrology?.timeOfBirth || req.body?.userDetails?.timeOfBirth,
+        placeOfBirth: user.placeOfBirth || fullData?.astrology?.placeOfBirth || req.body?.userDetails?.placeOfBirth,
       }
     );
 

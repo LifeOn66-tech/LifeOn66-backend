@@ -218,18 +218,36 @@ function textOnlyAnalysisPage(title, paragraphs) {
     </div>`;
 }
 
-function embeddedAnalysisPage(title, src, paragraphs, variant = 'palm') {
+const { getReportLogoDataUrl } = require('../utils/reportLogo');
+const { firstUsable } = require('../utils/imageResolver');
+
+let reportLogoSrc = '';
+
+function slotImage(images, fullData, slot) {
+  const palm = fullData?.palmistry?.images || {};
+  const face = fullData?.face?.images || {};
+  const bySlot = {
+    palmLeft: [images.palmLeft, palm.left, palm.leftPalm],
+    palmRight: [images.palmRight, palm.right, palm.rightPalm],
+    faceCenter: [images.faceCenter, face.center, face.front, face.faceCenter],
+    faceLeft: [images.faceLeft, face.left, face.leftProfile],
+    faceRight: [images.faceRight, face.right, face.rightProfile],
+  };
+  return firstUsable(...(bySlot[slot] || []));
+}
+
+function premiumImageAnalysisPage(title, src, paragraphs, variant = 'palm') {
   const safeSrc = src ? src.replace(/"/g, '&quot;') : '';
   const imageBlock = src
-    ? `<div class="embedded-hero ${variant}"><img src="${safeSrc}" alt="${title}" loading="eager" decoding="sync" /></div>`
-    : `<div class="img-missing embedded-missing"><span class="cap-label">${title}</span><p>No image uploaded for this view.</p></div>`;
+    ? `<div class="hero-image premium-hero ${variant}"><img src="${safeSrc}" alt="${title}" loading="eager" decoding="sync" /></div>`
+    : `<div class="img-missing hero-missing"><span class="cap-label">${title}</span><p>No image uploaded for this view.</p></div>`;
   const text = (Array.isArray(paragraphs) ? paragraphs : [paragraphs])
     .filter(Boolean)
     .map((p) => `<p>${p}</p>`)
     .join('');
   return `
     ${sectionHeader(title)}
-    <div class="content-card embedded-analysis-page">
+    <div class="content-card premium-image-page">
       ${imageBlock}
       <div class="analysis-text">${text}</div>
     </div>`;
@@ -296,10 +314,6 @@ function featureGrid(items) {
 function statCard(label, value) {
   return `<div class="stat-card"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
 }
-
-const { getReportLogoDataUrl } = require('../utils/reportLogo');
-
-let reportLogoSrc = '';
 
 function lifeOn66Logo(className = 'report-logo') {
   const src = reportLogoSrc || getReportLogoDataUrl();
@@ -778,12 +792,12 @@ function buildPremiumPages(analysis, fullData, userName, userDetails, images) {
     buildAstrologyDeepAnalysisPage(c, astro, theme),
     buildHouseGridPage(1, 6, astro, c),
     buildHouseGridPage(7, 12, astro, c),
-    embeddedAnalysisPage('Palmistry — Left Hand (Innate)', images.palmLeft, c.palmLeftParagraphs, 'palm'),
-    embeddedAnalysisPage('Palmistry — Right Hand (Active)', images.palmRight, c.palmRightParagraphs, 'palm'),
+    premiumImageAnalysisPage('Palmistry — Left Hand (Innate)', slotImage(images, fullData, 'palmLeft'), c.palmLeftParagraphs, 'palm'),
+    premiumImageAnalysisPage('Palmistry — Right Hand (Active)', slotImage(images, fullData, 'palmRight'), c.palmRightParagraphs, 'palm'),
     buildPalmLineDeepDive(c, palm),
-    embeddedAnalysisPage('Face Reading — Front View', images.faceCenter, c.faceFrontParagraphs, 'face'),
-    embeddedAnalysisPage('Face Reading — Right Profile', images.faceRight, c.faceRightParagraphs, 'face'),
-    embeddedAnalysisPage('Face Reading — Left Profile', images.faceLeft, c.faceLeftParagraphs, 'face'),
+    premiumImageAnalysisPage('Face Reading — Front View', slotImage(images, fullData, 'faceCenter'), c.faceFrontParagraphs, 'face'),
+    premiumImageAnalysisPage('Face Reading — Right Profile', slotImage(images, fullData, 'faceRight'), c.faceRightParagraphs, 'face'),
+    premiumImageAnalysisPage('Face Reading — Left Profile', slotImage(images, fullData, 'faceLeft'), c.faceLeftParagraphs, 'face'),
     buildPremiumFaceTraitMatching(c, fullData.face || {}),
     buildThreeYearRoadmap(c),
     careerBlueprintTable(c),
@@ -931,13 +945,12 @@ function createHTMLContent(analysis, language, fullData, tier, userName, userDet
     .roadmap-item strong { display: block; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
     .roadmap-item p { margin: 0; font-size: 14px; line-height: 1.75; color: var(--ink-muted); }
 
-    .embedded-analysis-page { padding: 10px 12px; }
-    .embedded-hero { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 8px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-    .embedded-hero.palm { height: 150px; max-height: 150px; }
-    .embedded-hero.face { height: 170px; max-height: 170px; }
-    .embedded-hero img { width: 100%; height: 100%; max-height: 100%; object-fit: contain; display: block; }
-    .embedded-missing { min-height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 10px; }
-    .embedded-analysis-page .analysis-text p { font-size: 12px; line-height: 1.55; margin-bottom: 6px; }
+    .premium-image-page { padding: 14px 18px; }
+    .premium-hero { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .premium-hero.palm { height: 240px; min-height: 240px; max-height: 240px; }
+    .premium-hero.face { height: 260px; min-height: 260px; max-height: 260px; }
+    .premium-hero img { width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; display: block; margin: 0 auto; }
+    .premium-image-page .analysis-text p { font-size: 13px; line-height: 1.65; color: var(--ink-muted); margin-bottom: 8px; }
 
     .analysis-page { padding: 16px 18px; }
     .hero-image { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; overflow: hidden; }

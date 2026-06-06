@@ -59,6 +59,15 @@ app.use(
       return callback(null, true);
     },
     credentials: true,
+    exposedHeaders: [
+      'Content-Disposition',
+      'Content-Length',
+      'Content-Type',
+      'X-Report-Generator',
+      'X-Report-Tier',
+      'X-Report-Pages',
+      'X-Report-Duration-Ms',
+    ],
   })
 );
 

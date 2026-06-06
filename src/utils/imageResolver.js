@@ -354,4 +354,5 @@ module.exports = {
   extractImageString,
   extractImagesFromReadingDoc,
   normalizeReadingImages,
+  firstUsable,
 };

@@ -218,6 +218,23 @@ function textOnlyAnalysisPage(title, paragraphs) {
     </div>`;
 }
 
+function embeddedAnalysisPage(title, src, paragraphs, variant = 'palm') {
+  const safeSrc = src ? src.replace(/"/g, '&quot;') : '';
+  const imageBlock = src
+    ? `<div class="embedded-hero ${variant}"><img src="${safeSrc}" alt="${title}" loading="eager" decoding="sync" /></div>`
+    : `<div class="img-missing embedded-missing"><span class="cap-label">${title}</span><p>No image uploaded for this view.</p></div>`;
+  const text = (Array.isArray(paragraphs) ? paragraphs : [paragraphs])
+    .filter(Boolean)
+    .map((p) => `<p>${p}</p>`)
+    .join('');
+  return `
+    ${sectionHeader(title)}
+    <div class="content-card embedded-analysis-page">
+      ${imageBlock}
+      <div class="analysis-text">${text}</div>
+    </div>`;
+}
+
 function analysisPage(title, src, paragraphs, variant = 'palm') {
   const safeSrc = src ? src.replace(/"/g, '&quot;') : '';
   const imageBlock = src
@@ -262,7 +279,7 @@ function careerBlueprintInner(c) {
 function careerBlueprintTable(c) {
   return `
     ${sectionHeader('Career Blueprint')}
-    <div class="content-card pro-card">${careerBlueprintInner(c)}</div>`;
+    <div class="content-card compact-card">${careerBlueprintInner(c).replace('<p class="panel-title">Career Blueprint</p>', '')}</div>`;
 }
 
 function sectionHeader(title) {
@@ -374,7 +391,6 @@ function buildAstrologyDeepAnalysisPage(c, astro, theme) {
         <div class="stat-card"><span class="stat-label">Plan Tier</span><span class="stat-value stat-value-sm">${theme.label || 'Astral Navigator'}</span></div>
       </div>
       ${c.astrologyParagraphs.map((p) => `<p>${p}</p>`).join('')}
-      ${astro.careerRecommendations ? `<p><strong>Career direction favors ${astro.careerRecommendations.toLowerCase()}.</strong></p>` : ''}
       <p class="panel-title" style="margin-top:10px">Planetary Periods</p>
       ${dashaBlock}
     </div>`;
@@ -451,10 +467,8 @@ function buildCompactGalleryPage(images) {
     </div>`;
 }
 
-function buildPremiumFinalPage(c, userName) {
+function buildFinalConclusionPage(c, userName) {
   return `
-    ${sectionHeader('Career Blueprint')}
-    <div class="content-card compact-card">${careerBlueprintInner(c).replace('<p class="panel-title">Career Blueprint</p>', '')}</div>
     ${sectionHeader('Final Expert Conclusion')}
     <div class="content-card compact-card">
       <div class="two-col">
@@ -764,16 +778,16 @@ function buildPremiumPages(analysis, fullData, userName, userDetails, images) {
     buildAstrologyDeepAnalysisPage(c, astro, theme),
     buildHouseGridPage(1, 6, astro, c),
     buildHouseGridPage(7, 12, astro, c),
-    textOnlyAnalysisPage('Palmistry — Left Hand (Innate)', c.palmLeftParagraphs),
-    textOnlyAnalysisPage('Palmistry — Right Hand (Active)', c.palmRightParagraphs),
+    embeddedAnalysisPage('Palmistry — Left Hand (Innate)', images.palmLeft, c.palmLeftParagraphs, 'palm'),
+    embeddedAnalysisPage('Palmistry — Right Hand (Active)', images.palmRight, c.palmRightParagraphs, 'palm'),
     buildPalmLineDeepDive(c, palm),
-    textOnlyAnalysisPage('Face Reading — Front View', c.faceFrontParagraphs),
-    textOnlyAnalysisPage('Face Reading — Right Profile', c.faceRightParagraphs),
-    textOnlyAnalysisPage('Face Reading — Left Profile', c.faceLeftParagraphs),
+    embeddedAnalysisPage('Face Reading — Front View', images.faceCenter, c.faceFrontParagraphs, 'face'),
+    embeddedAnalysisPage('Face Reading — Right Profile', images.faceRight, c.faceRightParagraphs, 'face'),
+    embeddedAnalysisPage('Face Reading — Left Profile', images.faceLeft, c.faceLeftParagraphs, 'face'),
     buildPremiumFaceTraitMatching(c, fullData.face || {}),
-    buildCompactGalleryPage(images),
     buildThreeYearRoadmap(c),
-    buildPremiumFinalPage(c, userName),
+    careerBlueprintTable(c),
+    buildFinalConclusionPage(c, userName),
   ];
 
   return { pages, theme, footer: theme.footer, useTextHeader: true };
@@ -882,6 +896,7 @@ function createHTMLContent(analysis, language, fullData, tier, userName, userDet
     .gallery-compact .cap-label { font-size: 10px; }
 
     .pro-card { box-shadow: none; border-radius: 8px; padding: 20px 22px; border: 1px solid var(--border); }
+    .pro-table { margin: 8px 0 12px; }
     .pro-data-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0 12px; }
     .pro-data-table th, .pro-data-table td { border: 1px solid var(--border); padding: 9px 11px; text-align: left; vertical-align: top; }
     .pro-data-table th { background: #f8fafc; color: var(--ink); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.6px; }
@@ -915,6 +930,14 @@ function createHTMLContent(analysis, language, fullData, tier, userName, userDet
     .roadmap-step { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--ink-light); background: #f8fafc; border: 1px solid var(--border); padding: 3px 10px; border-radius: 2px; margin-bottom: 6px; }
     .roadmap-item strong { display: block; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
     .roadmap-item p { margin: 0; font-size: 14px; line-height: 1.75; color: var(--ink-muted); }
+
+    .embedded-analysis-page { padding: 10px 12px; }
+    .embedded-hero { border: 1px solid var(--border); border-radius: 6px; background: var(--surface); padding: 8px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .embedded-hero.palm { height: 150px; max-height: 150px; }
+    .embedded-hero.face { height: 170px; max-height: 170px; }
+    .embedded-hero img { width: 100%; height: 100%; max-height: 100%; object-fit: contain; display: block; }
+    .embedded-missing { min-height: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 10px; }
+    .embedded-analysis-page .analysis-text p { font-size: 12px; line-height: 1.55; margin-bottom: 6px; }
 
     .analysis-page { padding: 16px 18px; }
     .hero-image { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; overflow: hidden; }

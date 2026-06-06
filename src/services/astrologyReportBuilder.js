@@ -7,6 +7,16 @@ const FREE_INCLUSIONS = [
   'Standard PDF Generation',
 ];
 
+const PREMIUM_INCLUSIONS = [
+  '15-Page Detailed Report',
+  'Full Astrological Houses',
+  'Detailed Palmistry Line Analysis',
+  'Face Reading Trait Matching',
+  'All Uploaded Images Included',
+  '3-Year Career Roadmap',
+  'High-Resolution PDF',
+];
+
 const TIER_META = {
   free: {
     label: 'Cosmic Explorer',
@@ -21,6 +31,7 @@ const TIER_META = {
     tagline: 'Expanded cosmic blueprint analysis.',
     accent: '#0f766e',
     accentSoft: '#ecfdf5',
+    accentGold: '#0d9488',
   },
   professional: {
     label: 'Cosmic Master',
@@ -124,7 +135,7 @@ function buildAstrologyParagraphs(astro, dashas, planets, yogas, periods, analys
     parts.push(`Current ${d.planet || 'planetary'} period${d.period ? ` (${d.period})` : ''}: ${d.effect || 'disciplined growth with powerful long-term results.'}`);
   }
   if (planets.length) {
-    parts.push(`Key chart placements: ${planets.slice(0, 6).map((p) => `${p.planet} in ${p.sign}${p.house ? ` (House ${p.house})` : ''}`).join(', ')}.`);
+    parts.push(`Key chart placements: ${planets.slice(0, 6).map((p) => `${p.planet || p.name || 'Planet'} in ${p.sign || '—'}${p.house ? ` (House ${p.house})` : ''}`).join(', ')}.`);
   }
   if (yogas.length) parts.push(typeof yogas[0] === 'string' ? yogas.join('. ') : yogas.map((y) => y.name || y).join('. '));
   if (periods.length) parts.push(`Favorable windows: ${periods.map((p) => (typeof p === 'string' ? p : `${p.period || p.year}: ${p.focus || p.milestone || ''}`)).join('; ')}.`);
@@ -228,7 +239,7 @@ function statCard(label, value) {
   return `<div class="stat-card"><span class="stat-label">${label}</span><span class="stat-value">${value}</span></div>`;
 }
 
-function brandCover(theme, userName) {
+function brandCover(theme, userName, inclusions = null) {
   return `
     <div class="cover">
       <div class="cover-band"></div>
@@ -241,7 +252,131 @@ function brandCover(theme, userName) {
           <p><strong>Prepared for:</strong> ${userName}</p>
           <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
         </div>
+        ${inclusions ? `<div class="inclusions-panel cover-inclusions"><p class="panel-title">Your Premium Report Includes</p>${featureGrid(inclusions)}</div>` : ''}
       </div>
+    </div>`;
+}
+
+function buildHousePages(c, astro) {
+  const houseLabels = {
+    1: 'Self, identity, and personal drive',
+    2: 'Wealth, speech, and family resources',
+    3: 'Communication, courage, and siblings',
+    4: 'Home, emotional foundation, and mother',
+    5: 'Creativity, intelligence, and children',
+    6: 'Service, health, and daily discipline',
+    7: 'Partnerships, marriage, and contracts',
+    8: 'Transformation, longevity, and hidden gains',
+    9: 'Fortune, dharma, and higher learning',
+    10: 'Career, authority, and public reputation',
+    11: 'Income, networks, and fulfilled ambitions',
+    12: 'Spirituality, expenses, and foreign connections',
+  };
+  const houses = astro.houses || astro.birthChartData?.houses || {};
+  const houseCards = (start, end) =>
+    Array.from({ length: end - start + 1 }, (_, i) => start + i)
+      .map((h) => {
+        const sign = houses[`house_${h}`] || houses[h] || houses[String(h)];
+        const planet = c.planets.find((p) => Number(p.house) === h);
+        const detail = sign
+          ? `Sign: ${sign}${planet ? `. ${planet.planet || planet.name} influences this domain.` : '.'}`
+          : houseLabels[h];
+        return `<div class="house-card"><strong>House ${h}</strong><p>${detail}</p><p class="house-meaning">${houseLabels[h]}</p></div>`;
+      })
+      .join('');
+
+  return [
+    `${sectionHeader('Astrological Houses 1–6')}<div class="content-card house-grid">${houseCards(1, 6)}</div>`,
+    `${sectionHeader('Astrological Houses 7–12')}<div class="content-card house-grid">${houseCards(7, 12)}</div>`,
+  ];
+}
+
+function buildPalmLineDeepDive(c, palm) {
+  const lines = [
+    palm.fateLineAnalysis && { title: 'Fate Line (Career Path)', text: palm.fateLineAnalysis },
+    palm.headLineAnalysis && { title: 'Head Line (Intellect)', text: palm.headLineAnalysis },
+    palm.sunLineAnalysis && { title: 'Sun Line (Recognition)', text: palm.sunLineAnalysis },
+  ].filter(Boolean);
+
+  if (!lines.length) {
+    lines.push(
+      { title: 'Fate Line', text: 'Your fate line trajectory indicates self-directed career growth with increasing clarity in your late twenties.' },
+      { title: 'Head Line', text: 'A deep, well-formed head line reflects analytical precision combined with creative problem-solving capacity.' },
+      { title: 'Sun Line', text: 'Sun line visibility suggests recognition through consistent professional excellence and public credibility.' }
+    );
+  }
+
+  return `
+    ${sectionHeader('Detailed Palmistry Line Analysis')}
+    <div class="content-card">
+      ${lines.map((l) => `<div class="line-card"><span class="line-label">${l.title}</span><p>${l.text}</p></div>`).join('')}
+      ${palm.careerRecommendations ? `<div class="highlight-box"><strong>Career Insight:</strong> ${palm.careerRecommendations}</div>` : ''}
+    </div>`;
+}
+
+function buildFaceTraitMatching(c, face) {
+  const traits = typeof face.personalityTraits === 'object' ? face.personalityTraits : {};
+  const scores = [
+    { label: 'Leadership', value: face.leadershipScore || traits.leadershipScore || 82 },
+    { label: 'Teamwork', value: face.teamworkScore || traits.teamworkScore || 78 },
+    { label: 'Independence', value: face.independenceScore || traits.independenceScore || 85 },
+  ];
+
+  return `
+    ${sectionHeader('Face Reading Trait Matching')}
+    <div class="content-card">
+      <p class="section-intro">Samudrik Shastra trait scores mapped against your career profile and behavioral tendencies.</p>
+      <div class="score-row">${scores.map((s) => `<div class="score-card"><span class="score-label">${s.label}</span><span class="score-value">${s.value}%</span><div class="score-bar"><div class="score-fill" style="width:${s.value}%"></div></div></div>`).join('')}</div>
+      <div class="tag-row">${c.strengths.slice(0, 6).map((s) => `<span class="tag">${typeof s === 'string' ? s : s.title || s.name}</span>`).join('')}</div>
+      <p>${traits.overview || face.careerRecommendations || 'Facial structure confirms a balanced achiever profile with logical thinking and emotional control under pressure.'}</p>
+      <div class="two-col insight-row">
+        <div class="insight-card"><span class="insight-label">Best Fit Roles</span><p>${c.career || 'Leadership, strategy, and skill-based professional environments.'}</p></div>
+        <div class="insight-card"><span class="insight-label">Growth Areas</span><p>${(c.challenges || []).slice(0, 3).join(', ') || 'Patience, delegation, work-life balance'}</p></div>
+      </div>
+    </div>`;
+}
+
+function buildThreeYearRoadmap(c) {
+  const items = c.threeYear.length
+    ? c.threeYear.map((y, i) => ({
+        year: y.year || y.title || `Year ${i + 1}`,
+        focus: y.milestone || y.focus || y.description || '',
+      }))
+    : [
+        { year: 'Year 1', focus: 'Skill mastery, certification, and building professional credibility in your core sector.' },
+        { year: 'Year 2', focus: 'Leadership exposure, team ownership, and visible delivery of high-impact projects.' },
+        { year: 'Year 3', focus: 'Senior role transition, business scaling, or executive authority with long-term wealth building.' },
+      ];
+
+  return `
+    ${sectionHeader('3-Year Career Roadmap')}
+    <div class="content-card">
+      ${items.map((item, i) => `
+        <div class="roadmap-item">
+          <span class="roadmap-step">Phase ${i + 1}</span>
+          <strong>${item.year}</strong>
+          <p>${item.focus}</p>
+        </div>`).join('')}
+      ${c.future?.length ? `<div class="highlight-box"><strong>Astrological Timing:</strong> ${c.future.map((p) => (typeof p === 'string' ? p : `${p.period || p.year}: ${p.focus || ''}`)).join(' · ')}</div>` : ''}
+    </div>`;
+}
+
+function buildImageGalleryPage(images) {
+  const galleryItems = [
+    images.palmRight && { url: images.palmRight, label: 'Right Palm (Active Hand)' },
+    images.palmLeft && { url: images.palmLeft, label: 'Left Palm (Innate Hand)' },
+    images.palmBoth && { url: images.palmBoth, label: 'Both Palms Overview' },
+    images.faceCenter && { url: images.faceCenter, label: 'Front Face' },
+    images.faceLeft && { url: images.faceLeft, label: 'Left Profile' },
+    images.faceRight && { url: images.faceRight, label: 'Right Profile' },
+    ...(images.extra || []),
+  ].filter(Boolean);
+
+  return `
+    ${sectionHeader('All Uploaded Images')}
+    <div class="content-card">
+      <p class="section-intro">Every image submitted during your reading session, reproduced for verification and reference.</p>
+      <div class="gallery-grid">${galleryItems.length ? galleryItems.map((img) => imageFigure(img.url, img.label, '', 'premium', 'gallery')).join('') : '<p class="note">No images were found. Upload palm and face photos before generating the report.</p>'}</div>
     </div>`;
 }
 
@@ -294,17 +429,70 @@ function buildFreePages(analysis, fullData, userName, userDetails, images) {
 }
 
 function buildPremiumPages(analysis, fullData, userName, userDetails, images) {
-  const free = buildFreePages(analysis, fullData, userName, userDetails, images);
-  free.theme = TIER_META.premium;
-  free.footer = 'LifeOn66 — Astral Navigator Report';
-  free.pages[0] = brandCover(TIER_META.premium, userName);
-  free.pages.push(`
-    ${sectionHeader('Love, Health & Strengths')}
-    <div class="content-card two-col insight-row">
-      <div class="insight-card"><span class="insight-label">Relationships</span><p>${buildContent(analysis, fullData, 'premium', userName).love || ''}</p></div>
-      <div class="insight-card"><span class="insight-label">Wellbeing</span><p>${buildContent(analysis, fullData, 'premium', userName).health || ''}</p></div>
+  const theme = TIER_META.premium;
+  const c = buildContent(analysis, fullData, 'premium', userName, userDetails);
+  const astro = fullData.astrology || {};
+  const palm = fullData.palmistry || {};
+  const pages = [];
+
+  pages.push(brandCover(theme, userName, PREMIUM_INCLUSIONS));
+
+  pages.push(`
+    ${sectionHeader('Premium Report Overview')}
+    <div class="content-card">
+      <div class="stats-row">${statCard('Confidence Score', `${c.confidence}%`)}${statCard('Report Pages', '15')}</div>
+      <table class="details-table">
+        <tr><td>Full Name</td><td>${userName}</td></tr>
+        <tr><td>Date of Birth</td><td>${userDetails.dateOfBirth || '—'}</td></tr>
+        <tr><td>Time of Birth</td><td>${userDetails.timeOfBirth || '—'}</td></tr>
+        <tr><td>Place of Birth</td><td>${userDetails.placeOfBirth || '—'}</td></tr>
+      </table>
+      <p class="panel-title">Included in Your $5 Premium Report</p>
+      ${featureGrid(PREMIUM_INCLUSIONS)}
+      <div class="highlight-box"><strong>Executive Summary:</strong> ${c.intro}</div>
     </div>`);
-  return free;
+
+  pages.push(`
+    ${sectionHeader('Astrology Deep Analysis')}
+    <div class="content-card">
+      <div class="stats-row">${statCard('Confidence Score', `${c.confidence}%`)}${statCard('Plan Tier', theme.label)}</div>
+      ${c.astrologyParagraphs.map((p) => `<p>${p}</p>`).join('')}
+      ${c.dashas.length ? `<p class="panel-title">Planetary Periods</p>${asList(c.dashas.map((d) => `${d.planet || ''} ${d.period || ''}: ${d.effect || ''}`))}` : ''}
+      ${c.yogas.length ? `<p class="panel-title">Yogas</p>${asList(c.yogas.map((y) => (typeof y === 'string' ? y : y.name || String(y))))}` : ''}
+    </div>`);
+
+  pages.push(...buildHousePages(c, astro));
+
+  pages.push(analysisPage('Palmistry — Left Hand (Innate)', images.palmLeft, c.palmLeftParagraphs, 'palm'));
+  pages.push(analysisPage('Palmistry — Right Hand (Active)', images.palmRight, c.palmRightParagraphs, 'palm'));
+  pages.push(buildPalmLineDeepDive(c, palm));
+
+  pages.push(analysisPage('Face Reading — Front View', images.faceCenter, c.faceFrontParagraphs, 'face'));
+  pages.push(analysisPage('Face Reading — Right Profile', images.faceRight, c.faceRightParagraphs, 'face'));
+  pages.push(analysisPage('Face Reading — Left Profile', images.faceLeft, c.faceLeftParagraphs, 'face'));
+  pages.push(buildFaceTraitMatching(c, fullData.face || {}));
+
+  pages.push(buildImageGalleryPage(images));
+  pages.push(buildThreeYearRoadmap(c));
+  pages.push(careerBlueprintTable(c));
+
+  pages.push(`
+    ${sectionHeader('Final Expert Conclusion')}
+    <div class="content-card">
+      ${c.personality ? `<p>${c.personality}</p>` : ''}
+      <div class="two-col insight-row">
+        <div class="insight-card"><span class="insight-label">Relationships</span><p>${c.love || 'Emotional honesty and shared ambition support long-term partnership success.'}</p></div>
+        <div class="insight-card"><span class="insight-label">Wellbeing</span><p>${c.health || 'Structured rest, routine, and stress management are essential during peak career cycles.'}</p></div>
+      </div>
+      <p class="panel-title">Core Strengths</p>
+      <div class="tag-row">${c.strengths.slice(0, 6).map((s) => `<span class="tag">${typeof s === 'string' ? s : s.title || s.name}</span>`).join('')}</div>
+      <div class="conclusion-box">
+        <p>${c.conclusion || `${userName}, your strongest success pattern combines analytical depth, leadership presence, and disciplined execution. Focus on mastery and consistency.`}</p>
+      </div>
+      ${Array.isArray(c.remedies) && c.remedies.length ? `<p class="panel-title">Recommended Actions</p>${asList(c.remedies.slice(0, 5))}` : ''}
+    </div>`);
+
+  return { pages, theme, footer: 'LifeOn66 — Astral Navigator Premium Report' };
 }
 
 function buildProfessionalPages(analysis, fullData, userName, userDetails, images) {
@@ -378,7 +566,26 @@ function createHTMLContent(analysis, language, fullData, tier, userName, userDet
     .cover-simple { justify-content: center; text-align: center; min-height: calc(297mm - 10mm); }
     .cover-brand { font-size: 28px; margin-bottom: 8mm; }
     .cover-label { font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
-    .cover-meta-simple { margin-top: 14mm; font-size: 14px; color: var(--ink-muted); line-height: 1.9; }
+    .cover-inclusions { margin-top: 12mm; text-align: left; }
+    .house-meaning { font-size: 12px; color: var(--ink-light); margin-top: 4px; }
+
+    .line-card { padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+    .line-card:last-child { border-bottom: none; }
+    .line-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--accent); margin-bottom: 6px; }
+    .line-card p { margin: 0; font-size: 14px; line-height: 1.8; color: var(--ink-muted); }
+
+    .score-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .score-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; text-align: center; }
+    .score-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--ink-light); }
+    .score-value { display: block; font-size: 22px; font-weight: 800; color: var(--accent); margin: 6px 0; }
+    .score-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+    .score-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-gold)); border-radius: 3px; }
+
+    .roadmap-item { padding: 14px 0; border-bottom: 1px solid #f1f5f9; }
+    .roadmap-item:last-child { border-bottom: none; }
+    .roadmap-step { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); background: var(--accent-soft); padding: 3px 10px; border-radius: 12px; margin-bottom: 6px; }
+    .roadmap-item strong { display: block; font-size: 15px; color: var(--ink); margin-bottom: 4px; }
+    .roadmap-item p { margin: 0; font-size: 14px; line-height: 1.75; color: var(--ink-muted); }
 
     .analysis-page { padding: 16px 18px; }
     .hero-image { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 12px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -501,4 +708,4 @@ function createHTMLContent(analysis, language, fullData, tier, userName, userDet
 </html>`;
 }
 
-module.exports = { createHTMLContent, TIER_META, FREE_INCLUSIONS };
+module.exports = { createHTMLContent, TIER_META, FREE_INCLUSIONS, PREMIUM_INCLUSIONS };

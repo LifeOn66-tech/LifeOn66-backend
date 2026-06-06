@@ -4,9 +4,13 @@ const { enrichReportData } = require('../utils/reportDataResolver');
 const User = require('../models/User');
 
 exports.generateReport = async (req, res) => {
+  const started = Date.now();
   try {
     const { language = 'en', analysis, fullData, tier } = req.body;
     const userId = req.user.id;
+
+    req.setTimeout(120000);
+    res.setTimeout(120000);
 
     const user = await User.findById(userId);
     if (!user) {
@@ -43,8 +47,7 @@ exports.generateReport = async (req, res) => {
     const enriched = await enrichReportData(userId, analysis, fullData);
 
     console.log(
-      `[Report] Generating ${finalTier} PDF for ${user.fullName} — images in request: ${enriched.imageCount.before}, after DB merge: ${enriched.imageCount.after}`,
-      enriched.sources
+      `[Report] Start ${finalTier} PDF for ${user.fullName} — images: ${enriched.imageCount.before} → ${enriched.imageCount.after}`
     );
 
     if (enriched.imageCount.after === 0) {
@@ -64,20 +67,36 @@ exports.generateReport = async (req, res) => {
       }
     );
 
+    const filenamePrefix =
+      finalTier === 'premium'
+        ? 'LifeOn66_Premium_Report'
+        : finalTier === 'professional'
+          ? 'LifeOn66_Professional_Report'
+          : 'LifeOn66_Report';
+
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename=LifeOn66_Report_${Date.now()}.pdf`,
+      'Content-Disposition': `attachment; filename="${filenamePrefix}_${Date.now()}.pdf"`,
       'Content-Length': pdfBuffer.length,
+      'X-Report-Generator': 'lifeon66-backend',
+      'X-Report-Tier': finalTier,
+      'X-Report-Pages': finalTier === 'premium' ? '15' : undefined,
+      'X-Report-Duration-Ms': String(Date.now() - started),
     });
 
+    console.log(`[Report] Sent ${filenamePrefix} (${Math.round(pdfBuffer.length / 1024)} KB) in ${Date.now() - started}ms`);
     res.send(pdfBuffer);
 
   } catch (error) {
-    console.error('[Report] PDF generation failed:', error);
-    res.status(500).json({
-      success: false,
-      message: `PDF Generation Failed: ${error.message}. Please check backend logs.`,
-      error: error.message,
-    });
+    console.error(`[Report] PDF failed after ${Date.now() - started}ms:`, error.message);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: error.message?.includes('timed out')
+          ? 'PDF generation took too long. Please try again — ensure images are saved as base64 before downloading.'
+          : `PDF generation failed: ${error.message}`,
+        error: error.message,
+      });
+    }
   }
 };

@@ -210,7 +210,7 @@ function fetchBuffer(url, redirects = 0) {
     const request = client.get(
       url,
       {
-        timeout: 45000,
+        timeout: 12000,
         headers: {
           'User-Agent': 'LifeOn66-PDF-Generator/1.0',
           Accept: 'image/*,*/*',
@@ -270,16 +270,22 @@ async function resolveAllImages(imageMap) {
   const slots = ['palmRight', 'palmLeft', 'palmBoth', 'faceCenter', 'faceLeft', 'faceRight'];
   const resolved = { ...imageMap, extra: [] };
 
-  for (const key of slots) {
-    resolved[key] = await resolveImageSrc(imageMap[key]);
-  }
+  const slotResults = await Promise.all(
+    slots.map(async (key) => [key, await resolveImageSrc(imageMap[key])])
+  );
+  slotResults.forEach(([key, value]) => {
+    resolved[key] = value;
+  });
 
   if (Array.isArray(imageMap.extra)) {
-    resolved.extra = [];
-    for (const item of imageMap.extra) {
-      const url = await resolveImageSrc(item.url);
-      if (url) resolved.extra.push({ label: item.label, url });
-    }
+    resolved.extra = (
+      await Promise.all(
+        imageMap.extra.map(async (item) => {
+          const url = await resolveImageSrc(item.url);
+          return url ? { label: item.label, url } : null;
+        })
+      )
+    ).filter(Boolean);
   }
 
   return resolved;

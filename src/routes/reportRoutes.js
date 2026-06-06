@@ -5,4 +5,10 @@ const { protect } = require('../middleware/auth');
 
 router.post('/generate', protect, reportController.generateReport);
 
+/** Frontend career-blueprint download should use this — not client-side PDF generation */
+router.post('/career-blueprint', protect, (req, res, next) => {
+  req.body.tier = req.body.tier || 'premium';
+  return reportController.generateReport(req, res, next);
+});
+
 module.exports = router;

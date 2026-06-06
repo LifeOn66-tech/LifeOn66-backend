@@ -1,9 +1,85 @@
 const puppeteer = require('puppeteer');
 const { createHTMLContent } = require('./astrologyReportBuilder');
 const { prepareReportImages } = require('../utils/imageResolver');
+const { findChromeExecutable } = require('../utils/puppeteerHelper');
 
-async function waitForImages(page) {
-  const result = await page.evaluate(async () => {
+const PDF_TIMEOUT_MS = Number(process.env.PDF_TIMEOUT_MS) || 90000;
+const IMAGE_WAIT_MS = 3000;
+const LAUNCH_TIMEOUT_MS = 30000;
+
+let sharedBrowser = null;
+let browserLaunchPromise = null;
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)),
+        ms
+      )
+    ),
+  ]);
+}
+
+function getLaunchArgs() {
+  const args = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+  ];
+  // Linux-only flags — on Windows these can hang Chrome indefinitely
+  if (process.env.NODE_ENV === 'production') {
+    args.push('--no-zygote', '--single-process', '--disable-software-rasterizer');
+  }
+  return args;
+}
+
+async function getBrowser() {
+  if (sharedBrowser?.isConnected()) {
+    return sharedBrowser;
+  }
+
+  if (!browserLaunchPromise) {
+    browserLaunchPromise = withTimeout(
+      (async () => {
+        const executablePath = findChromeExecutable();
+        const launchOptions = {
+          headless: true,
+          args: getLaunchArgs(),
+        };
+
+        if (executablePath) {
+          launchOptions.executablePath = executablePath;
+        } else if (process.env.NODE_ENV === 'production') {
+          throw new Error(
+            'Chrome Headless Shell executable not found in puppeteer_cache. Please trigger "Clear Build Cache & Deploy" on Render.'
+          );
+        }
+
+        console.log('[PDF] Launching Chrome...');
+        sharedBrowser = await puppeteer.launch(launchOptions);
+        sharedBrowser.on('disconnected', () => {
+          sharedBrowser = null;
+          browserLaunchPromise = null;
+        });
+        console.log('[PDF] Chrome ready');
+        return sharedBrowser;
+      })(),
+      LAUNCH_TIMEOUT_MS,
+      'Chrome launch'
+    ).catch((err) => {
+      browserLaunchPromise = null;
+      throw err;
+    });
+  }
+
+  return browserLaunchPromise;
+}
+
+async function waitForImages(page, maxWaitMs = IMAGE_WAIT_MS) {
+  const result = await page.evaluate(async (timeoutMs) => {
     const imgs = Array.from(document.images);
     const report = [];
 
@@ -15,8 +91,6 @@ async function waitForImages(page) {
               report.push({
                 alt: img.alt || 'unnamed',
                 ok: img.complete && img.naturalWidth > 0 && img.naturalHeight > 0,
-                width: img.naturalWidth,
-                height: img.naturalHeight,
               });
               resolve();
             };
@@ -26,13 +100,13 @@ async function waitForImages(page) {
             }
             img.onload = finish;
             img.onerror = finish;
-            setTimeout(finish, 12000);
+            setTimeout(finish, timeoutMs);
           })
       )
     );
 
     return report;
-  });
+  }, maxWaitMs);
 
   const loaded = result.filter((r) => r.ok).length;
   const failed = result.filter((r) => !r.ok);
@@ -45,62 +119,95 @@ async function waitForImages(page) {
 }
 
 async function generatePDF(analysis, language, fullData, tier, userName, userDetails = {}) {
-  let browser;
+  const started = Date.now();
+  let page;
+
   try {
-    const { findChromeExecutable } = require('../utils/puppeteerHelper');
-    const executablePath = findChromeExecutable();
+    return await withTimeout(
+      (async () => {
+        const { images: resolvedImages, stats } = await prepareReportImages(fullData);
+        console.log(
+          `[PDF] Tier: ${tier} | Collected: ${stats.collected} | Inlined: ${stats.resolved} (${Date.now() - started}ms)`
+        );
 
-    const { images: resolvedImages, stats } = await prepareReportImages(fullData);
+        const browser = await getBrowser();
+        page = await browser.newPage();
+        page.setDefaultTimeout(60000);
+        page.setDefaultNavigationTimeout(60000);
 
-    console.log(`[PDF] Tier: ${tier} | Collected: ${stats.collected} | Inlined: ${stats.resolved}`);
-    stats.slots.forEach((slot) => {
-      if (slot.found || slot.inlined) {
-        console.log(`[PDF]   ${slot.label}: found=${slot.found} inlined=${slot.inlined}`);
-      }
-    });
+        await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
 
-    const launchOptions = {
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-zygote',
-        '--single-process',
-        '--disable-software-rasterizer',
-      ],
-    };
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+          const url = req.url();
+          if (
+            url.startsWith('data:') ||
+            url === 'about:blank' ||
+            req.resourceType() === 'document'
+          ) {
+            req.continue();
+            return;
+          }
+          req.abort();
+        });
 
-    if (executablePath) {
-      launchOptions.executablePath = executablePath;
-    } else if (process.env.NODE_ENV === 'production' && !executablePath) {
-      throw new Error(
-        'Chrome Headless Shell executable not found in puppeteer_cache. Please trigger "Clear Build Cache & Deploy" on Render.'
-      );
-    }
+        const html = createHTMLContent(
+          analysis,
+          language,
+          fullData,
+          tier,
+          userName,
+          userDetails,
+          resolvedImages
+        );
 
-    browser = await puppeteer.launch(launchOptions);
-    const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 2 });
+        console.log(`[PDF] Rendering HTML (${Math.round(html.length / 1024)} KB)...`);
+        await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await waitForImages(page);
 
-    const html = createHTMLContent(analysis, language, fullData, tier, userName, userDetails, resolvedImages);
+        console.log(`[PDF] Printing PDF... (${Date.now() - started}ms elapsed)`);
+        const buffer = await page.pdf({
+          format: 'A4',
+          printBackground: true,
+          preferCSSPageSize: true,
+          margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
+        });
 
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 120000 });
-    await waitForImages(page);
-
-    return await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
-    });
+        console.log(
+          `[PDF] Done — ${Math.round(buffer.length / 1024)} KB in ${Date.now() - started}ms`
+        );
+        return buffer;
+      })(),
+      PDF_TIMEOUT_MS,
+      'PDF generation'
+    );
   } catch (error) {
-    console.error('[PDF] Generation failed:', error);
+    console.error('[PDF] Generation failed:', error.message);
     throw error;
   } finally {
-    if (browser) await browser.close();
+    if (page) {
+      try {
+        await page.close();
+      } catch {
+        // Page may already be closed if browser crashed
+      }
+    }
   }
 }
 
-module.exports = { generatePDF };
+async function closeBrowser() {
+  if (sharedBrowser) {
+    try {
+      await sharedBrowser.close();
+    } catch {
+      // ignore
+    }
+    sharedBrowser = null;
+    browserLaunchPromise = null;
+  }
+}
+
+process.on('SIGTERM', closeBrowser);
+process.on('SIGINT', closeBrowser);
+
+module.exports = { generatePDF, closeBrowser };

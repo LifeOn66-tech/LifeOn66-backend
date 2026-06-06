@@ -64,10 +64,20 @@ exports.generateReport = async (req, res) => {
       }
     );
 
+    const filenamePrefix =
+      finalTier === 'premium'
+        ? 'LifeOn66_Premium_Report'
+        : finalTier === 'professional'
+          ? 'LifeOn66_Professional_Report'
+          : 'LifeOn66_Report';
+
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename=LifeOn66_Report_${Date.now()}.pdf`,
+      'Content-Disposition': `attachment; filename=${filenamePrefix}_${Date.now()}.pdf`,
       'Content-Length': pdfBuffer.length,
+      'X-Report-Generator': 'lifeon66-backend',
+      'X-Report-Tier': finalTier,
+      'X-Report-Pages': finalTier === 'premium' ? '15' : undefined,
     });
 
     res.send(pdfBuffer);

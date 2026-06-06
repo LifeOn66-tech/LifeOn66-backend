@@ -157,6 +157,59 @@ async function enrichReportData(userId, analysis = {}, fullData = {}) {
     ...analysis,
   };
 
+  if (!enrichedAnalysis.topCareerPaths?.length && insightDoc?.topCareerPaths?.length) {
+    enrichedAnalysis.topCareerPaths = insightDoc.topCareerPaths;
+  }
+  if (!enrichedAnalysis.threeYearPathway?.length && insightDoc?.threeYearPathway?.length) {
+    enrichedAnalysis.threeYearPathway = insightDoc.threeYearPathway;
+  }
+  if (!enrichedAnalysis.synthesizedRecommendation && insightDoc?.synthesizedRecommendation) {
+    enrichedAnalysis.synthesizedRecommendation = insightDoc.synthesizedRecommendation;
+  }
+  if (!enrichedAnalysis.strengthsSummary?.length && !enrichedAnalysis.strengths?.length) {
+    const traits = typeof faceDoc?.personalityTraits === 'object' ? faceDoc.personalityTraits : {};
+    enrichedAnalysis.strengthsSummary = insightDoc?.strengths || traits.strengths || enrichedAnalysis.strengthsSummary;
+  }
+  if (!enrichedAnalysis.planets?.length && astrologyDoc?.planets?.length) {
+    enrichedAnalysis.planets = astrologyDoc.planets;
+  }
+  if (!enrichedAnalysis.dashas?.length && astrologyDoc?.dashas?.length) {
+    enrichedAnalysis.dashas = astrologyDoc.dashas;
+  }
+  if (!enrichedAnalysis.yogas?.length && astrologyDoc?.yogas?.length) {
+    enrichedAnalysis.yogas = astrologyDoc.yogas;
+  }
+  if (!enrichedAnalysis.astrologySummary && astrologyDoc?.careerHouseAnalysis) {
+    enrichedAnalysis.astrologySummary = astrologyDoc.careerHouseAnalysis;
+  }
+  if (!enrichedAnalysis.palmistrySummary && palmistryDoc) {
+    enrichedAnalysis.palmistrySummary = [
+      palmistryDoc.fateLineAnalysis,
+      palmistryDoc.headLineAnalysis,
+      palmistryDoc.sunLineAnalysis,
+    ].filter(Boolean).join(' ');
+  }
+  if (!enrichedAnalysis.faceSummary && faceDoc?.careerRecommendations) {
+    enrichedAnalysis.faceSummary = faceDoc.careerRecommendations;
+  }
+
+  if (
+    !enrichedAnalysis.synthesizedRecommendation &&
+    !enrichedAnalysis.topCareerPaths?.length
+  ) {
+    const synthesized = await getOrBuildCareerInsight(userId);
+    if (synthesized?.data) {
+      Object.assign(enrichedAnalysis, {
+        synthesizedRecommendation: enrichedAnalysis.synthesizedRecommendation || synthesized.data.synthesizedRecommendation,
+        topCareerPaths: enrichedAnalysis.topCareerPaths?.length ? enrichedAnalysis.topCareerPaths : synthesized.data.topCareerPaths,
+        strengthsSummary: enrichedAnalysis.strengthsSummary || synthesized.data.strengths,
+        developmentAreas: enrichedAnalysis.developmentAreas || synthesized.data.challenges,
+        confidenceScore: enrichedAnalysis.confidenceScore || synthesized.data.confidenceScore,
+        threeYearPathway: enrichedAnalysis.threeYearPathway?.length ? enrichedAnalysis.threeYearPathway : synthesized.data.threeYearPathway,
+      });
+    }
+  }
+
   const beforeCount = countImages(fullData);
   const afterCount = countImages(enrichedFullData);
 

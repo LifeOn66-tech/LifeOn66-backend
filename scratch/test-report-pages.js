@@ -11,9 +11,11 @@ async function main() {
 
   for (const tier of ['free', 'premium', 'professional']) {
     const html = createHTMLContent({ confidenceScore: 92 }, 'en', fullData, tier, 'Test User', {}, images);
-    const count = html.split('class="page"').length - 1;
+    const count = (html.match(/Page \d+ of (\d+)/g) || []).pop();
+    const total = count ? count.match(/of (\d+)/)[1] : '?';
     const imgTags = (html.match(/<img /g) || []).length;
-    console.log(`${tier}: ${count} pages, ${imgTags} img tags`);
+    const hasLogo = html.includes('alt="LifeOn66"');
+    console.log(`${tier}: ${total} pages, ${imgTags} img tags, logo=${hasLogo}`);
   }
 }
 

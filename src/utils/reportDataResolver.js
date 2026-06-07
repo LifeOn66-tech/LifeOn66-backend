@@ -213,7 +213,14 @@ async function enrichReportData(userId, analysis = {}, fullData = {}, user = nul
   const beforeCount = countImages(fullData);
   const afterCount = countImages(enrichedFullData);
 
-  const userDetails = resolveUserDetails(user, astrologyDoc, enrichedFullData, bodyUserDetails);
+  const userDetails = resolveUserDetails(
+    user,
+    astrologyDoc,
+    enrichedFullData,
+    bodyUserDetails,
+    enrichedAnalysis,
+    fullData
+  );
 
   return {
     analysis: enrichedAnalysis,
@@ -252,50 +259,155 @@ function formatBirthValue(val) {
   if (val instanceof Date && !Number.isNaN(val.getTime())) {
     return val.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
   }
+  if (typeof val === 'object') {
+    const { day, month, year } = val;
+    if (day != null && month != null && year != null) {
+      const d = new Date(Number(year), Number(month) - 1, Number(day));
+      if (!Number.isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+      }
+    }
+    if (val.formatted) return formatBirthValue(val.formatted);
+    if (val.label) return formatBirthValue(val.label);
+  }
   return String(val);
 }
 
-/**
- * Merges birth details from User profile, astrology reading, birthChartData, and request body.
- */
-function resolveUserDetails(user, astrologyDoc, fullData = {}, bodyUserDetails = {}) {
-  const chart = astrologyDoc?.birthChartData || {};
-  const astro = fullData?.astrology || {};
+const DATE_KEYS = ['dateOfBirth', 'date_of_birth', 'dob', 'birthDate', 'birth_date', 'birthday'];
+const TIME_KEYS = ['timeOfBirth', 'time_of_birth', 'birthTime', 'birth_time', 'time'];
+const PLACE_KEYS = [
+  'placeOfBirth',
+  'place_of_birth',
+  'birthPlace',
+  'birth_place',
+  'birthLocation',
+  'birth_location',
+  'city',
+  'location',
+];
 
-  const pick = (...values) => {
-    for (const v of values) {
-      const formatted = formatBirthValue(v);
-      if (formatted) return formatted;
+function collectBirthValues(obj, depth = 0, visited = new WeakSet()) {
+  const dates = [];
+  const times = [];
+  const places = [];
+
+  if (!obj || typeof obj !== 'object' || depth > 5) {
+    return { dates, times, places };
+  }
+  if (visited.has(obj)) return { dates, times, places };
+  visited.add(obj);
+
+  for (const key of DATE_KEYS) {
+    if (obj[key] != null && obj[key] !== '') dates.push(obj[key]);
+  }
+  if (obj.day != null && obj.month != null && obj.year != null) {
+    dates.push({ day: obj.day, month: obj.month, year: obj.year });
+  }
+
+  for (const key of TIME_KEYS) {
+    if (obj[key] != null && obj[key] !== '') times.push(obj[key]);
+  }
+
+  for (const key of PLACE_KEYS) {
+    if (obj[key] != null && obj[key] !== '') places.push(obj[key]);
+  }
+
+  const nestedKeys = [
+    'birthChartData',
+    'birthDetails',
+    'birthInfo',
+    'userDetails',
+    'astrology',
+    'birthData',
+    'profile',
+    'input',
+    'formData',
+  ];
+  for (const key of nestedKeys) {
+    if (obj[key] && typeof obj[key] === 'object') {
+      const nested = collectBirthValues(obj[key], depth + 1, visited);
+      dates.push(...nested.dates);
+      times.push(...nested.times);
+      places.push(...nested.places);
     }
-    return null;
-  };
+  }
 
+  return { dates, times, places };
+}
+
+function pickFirstFormatted(values) {
+  for (const v of values) {
+    const formatted = formatBirthValue(v);
+    if (formatted) return formatted;
+  }
+  return null;
+}
+
+function collectBodyUserDetails(body = {}) {
   return {
-    dateOfBirth: pick(
-      bodyUserDetails.dateOfBirth,
-      user?.dateOfBirth,
-      astro.dateOfBirth,
-      chart.dateOfBirth,
-      chart.dob,
-      chart.birthDate
-    ),
-    timeOfBirth: pick(
-      bodyUserDetails.timeOfBirth,
-      user?.timeOfBirth,
-      astro.timeOfBirth,
-      chart.timeOfBirth,
-      chart.birthTime
-    ),
-    placeOfBirth: pick(
-      bodyUserDetails.placeOfBirth,
-      user?.placeOfBirth,
-      astro.placeOfBirth,
-      chart.placeOfBirth,
-      chart.birthPlace,
-      chart.city,
-      chart.location
-    ),
+    ...(body.userDetails || {}),
+    ...(body.birthDetails || {}),
+    dateOfBirth: body.dateOfBirth ?? body.userDetails?.dateOfBirth ?? body.birthDetails?.dateOfBirth,
+    timeOfBirth: body.timeOfBirth ?? body.userDetails?.timeOfBirth ?? body.birthDetails?.timeOfBirth,
+    placeOfBirth: body.placeOfBirth ?? body.userDetails?.placeOfBirth ?? body.birthDetails?.placeOfBirth,
   };
 }
 
-module.exports = { enrichReportData, getOrBuildCareerInsight, resolveUserDetails };
+/**
+ * Merges birth details from request body, analysis, fullData, saved readings, and user profile.
+ */
+function resolveUserDetails(
+  user,
+  astrologyDoc,
+  enrichedFullData = {},
+  bodyUserDetails = {},
+  analysis = {},
+  requestFullData = {}
+) {
+  const dateCandidates = [];
+  const timeCandidates = [];
+  const placeCandidates = [];
+
+  const addSource = (...sources) => {
+    for (const source of sources) {
+      if (!source) continue;
+      const collected = collectBirthValues(source);
+      dateCandidates.push(...collected.dates);
+      timeCandidates.push(...collected.times);
+      placeCandidates.push(...collected.places);
+    }
+  };
+
+  // Highest priority: explicit values from the current report/download request
+  addSource(bodyUserDetails, analysis, requestFullData, requestFullData?.astrology);
+  // Then enriched payload and saved astrology reading from DB
+  addSource(enrichedFullData, enrichedFullData?.astrology, astrologyDoc, astrologyDoc?.birthChartData);
+  // Finally user profile (synced when astrology reading is saved)
+  addSource(user);
+
+  return {
+    dateOfBirth: pickFirstFormatted(dateCandidates),
+    timeOfBirth: pickFirstFormatted(timeCandidates),
+    placeOfBirth: pickFirstFormatted(placeCandidates),
+  };
+}
+
+async function syncUserBirthDetails(userId, details) {
+  if (!userId || !details) return;
+  const updates = {};
+  if (details.dateOfBirth) updates.dateOfBirth = details.dateOfBirth;
+  if (details.timeOfBirth) updates.timeOfBirth = details.timeOfBirth;
+  if (details.placeOfBirth) updates.placeOfBirth = details.placeOfBirth;
+  if (!Object.keys(updates).length) return;
+
+  const User = require('../models/User');
+  await User.findByIdAndUpdate(userId, updates);
+}
+
+module.exports = {
+  enrichReportData,
+  getOrBuildCareerInsight,
+  resolveUserDetails,
+  collectBodyUserDetails,
+  syncUserBirthDetails,
+};

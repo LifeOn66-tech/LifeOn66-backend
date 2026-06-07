@@ -3,7 +3,7 @@ const PalmistryReading = require('../models/PalmistryReading');
 const FaceReading = require('../models/FaceReading');
 const CareerInsight = require('../models/CareerInsight');
 const { normalizeReadingImages } = require('../utils/imageResolver');
-const { getOrBuildCareerInsight } = require('../utils/reportDataResolver');
+const { getOrBuildCareerInsight, resolveUserDetails, syncUserBirthDetails } = require('../utils/reportDataResolver');
 
 // @desc    Save astrology reading
 // @route   POST /api/readings/astrology
@@ -12,6 +12,17 @@ exports.saveAstrologyReading = async (req, res) => {
   try {
     req.body.user = req.user.id;
     const reading = await AstrologyReading.create(req.body);
+
+    const birthDetails = resolveUserDetails(
+      null,
+      reading,
+      { astrology: reading, ...req.body },
+      req.body.userDetails || req.body.birthDetails || {},
+      req.body,
+      req.body
+    );
+    await syncUserBirthDetails(req.user.id, birthDetails);
+
     res.status(201).json({ success: true, data: reading });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });

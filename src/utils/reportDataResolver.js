@@ -96,7 +96,7 @@ async function getOrBuildCareerInsight(userId) {
 /**
  * Loads the user's linked readings (via CareerInsight IDs) and merges images + analysis.
  */
-async function enrichReportData(userId, analysis = {}, fullData = {}) {
+async function enrichReportData(userId, analysis = {}, fullData = {}, user = null, bodyUserDetails = {}) {
   const insightDoc = await CareerInsight.findOne({ user: userId }).sort({ createdAt: -1 }).lean();
 
   const [palmistryDoc, faceDoc, astrologyDoc] = await Promise.all([
@@ -213,9 +213,12 @@ async function enrichReportData(userId, analysis = {}, fullData = {}) {
   const beforeCount = countImages(fullData);
   const afterCount = countImages(enrichedFullData);
 
+  const userDetails = resolveUserDetails(user, astrologyDoc, enrichedFullData, bodyUserDetails);
+
   return {
     analysis: enrichedAnalysis,
     fullData: enrichedFullData,
+    userDetails,
     sources: {
       insightFromDb: Boolean(insightDoc),
       palmistryReadingId: palmistryDoc?._id?.toString(),
@@ -243,4 +246,56 @@ function countImages(fullData) {
   ].filter(Boolean).length;
 }
 
-module.exports = { enrichReportData, getOrBuildCareerInsight };
+function formatBirthValue(val) {
+  if (val == null || val === '') return null;
+  if (typeof val === 'string') return val.trim();
+  if (val instanceof Date && !Number.isNaN(val.getTime())) {
+    return val.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  return String(val);
+}
+
+/**
+ * Merges birth details from User profile, astrology reading, birthChartData, and request body.
+ */
+function resolveUserDetails(user, astrologyDoc, fullData = {}, bodyUserDetails = {}) {
+  const chart = astrologyDoc?.birthChartData || {};
+  const astro = fullData?.astrology || {};
+
+  const pick = (...values) => {
+    for (const v of values) {
+      const formatted = formatBirthValue(v);
+      if (formatted) return formatted;
+    }
+    return null;
+  };
+
+  return {
+    dateOfBirth: pick(
+      bodyUserDetails.dateOfBirth,
+      user?.dateOfBirth,
+      astro.dateOfBirth,
+      chart.dateOfBirth,
+      chart.dob,
+      chart.birthDate
+    ),
+    timeOfBirth: pick(
+      bodyUserDetails.timeOfBirth,
+      user?.timeOfBirth,
+      astro.timeOfBirth,
+      chart.timeOfBirth,
+      chart.birthTime
+    ),
+    placeOfBirth: pick(
+      bodyUserDetails.placeOfBirth,
+      user?.placeOfBirth,
+      astro.placeOfBirth,
+      chart.placeOfBirth,
+      chart.birthPlace,
+      chart.city,
+      chart.location
+    ),
+  };
+}
+
+module.exports = { enrichReportData, getOrBuildCareerInsight, resolveUserDetails };

@@ -118,6 +118,105 @@ function normalizePlanets(astro, analysis) {
   })).filter((p) => p.planet);
 }
 
+const ZODIAC_SIGNS = [
+  'Aries', 'Taurus', 'Gemini', 'Cancer', 'Leo', 'Virgo',
+  'Libra', 'Scorpio', 'Sagittarius', 'Capricorn', 'Aquarius', 'Pisces',
+];
+
+function extractSignValue(val) {
+  if (!val) return null;
+  if (typeof val === 'string') return val.trim() || null;
+  if (typeof val === 'object') return val.sign || val.rashi || val.name || null;
+  return null;
+}
+
+function normalizeHouses(astro, planets = []) {
+  const map = {};
+  const sources = [
+    astro?.houses,
+    astro?.birthChartData?.houses,
+    astro?.birthChartData?.houseSigns,
+    astro?.houseSigns,
+  ].filter(Boolean);
+
+  for (const houses of sources) {
+    if (Array.isArray(houses)) {
+      for (const entry of houses) {
+        const num = Number(entry?.house ?? entry?.number ?? entry?.bhava);
+        const sign = extractSignValue(entry?.sign ?? entry?.rashi ?? entry);
+        if (num >= 1 && num <= 12 && sign) {
+          map[num] = sign;
+          map[`house_${num}`] = sign;
+        }
+      }
+      continue;
+    }
+    if (typeof houses !== 'object') continue;
+    for (let h = 1; h <= 12; h += 1) {
+      const val =
+        houses[`house_${h}`] ??
+        houses[`House${h}`] ??
+        houses[`house${h}`] ??
+        houses[h] ??
+        houses[String(h)];
+      const sign = extractSignValue(val);
+      if (sign) {
+        map[h] = sign;
+        map[`house_${h}`] = sign;
+      }
+    }
+  }
+
+  const ascRaw =
+    map[1] ||
+    map.house_1 ||
+    astro?.ascendant ||
+    astro?.lagna ||
+    astro?.birthChartData?.ascendant ||
+    astro?.birthChartData?.lagna;
+  const ascSign = extractSignValue(ascRaw) || (typeof ascRaw === 'string' ? ascRaw : null);
+
+  if (ascSign) {
+    const idx = ZODIAC_SIGNS.findIndex((s) => s.toLowerCase() === ascSign.toLowerCase());
+    if (idx >= 0) {
+      for (let h = 1; h <= 12; h += 1) {
+        if (!map[h]) {
+          map[h] = ZODIAC_SIGNS[(idx + h - 1) % 12];
+          map[`house_${h}`] = map[h];
+        }
+      }
+    }
+  }
+
+  for (let h = 1; h <= 12; h += 1) {
+    if (map[h]) continue;
+    const inHouse = planets.filter((p) => Number(p.house) === h && p.sign);
+    if (inHouse.length === 1) map[h] = inHouse[0].sign;
+    else if (inHouse.length > 1) map[h] = [...new Set(inHouse.map((p) => p.sign))].join(' · ');
+    if (map[h]) map[`house_${h}`] = map[h];
+  }
+
+  return map;
+}
+
+function getHouseSign(houses, houseNum, planets = []) {
+  const sign = houses[`house_${houseNum}`] || houses[houseNum] || houses[String(houseNum)];
+  if (sign) return sign;
+  const inHouse = planets.filter((p) => Number(p.house) === houseNum && p.sign);
+  if (inHouse.length === 1) return inHouse[0].sign;
+  if (inHouse.length > 1) return [...new Set(inHouse.map((p) => p.sign))].join(' · ');
+  return null;
+}
+
+function getHouseBadge(houseNum, sign, planets = []) {
+  if (sign) return sign;
+  const inHouse = planets.filter((p) => Number(p.house) === houseNum).map((p) => p.planet);
+  if (inHouse.length) return inHouse.join(', ');
+  const short = HOUSE_SHORT[houseNum];
+  if (short) return short.split(',')[0].trim();
+  return `House ${houseNum}`;
+}
+
 function buildContent(analysis = {}, fullData = {}, tier, userName, userDetails = {}) {
   const palm = fullData.palmistry || {};
   const face = fullData.face || {};
@@ -439,10 +538,10 @@ const HOUSE_SHORT = {
 };
 
 function buildHouseGridPage(start, end, astro, c) {
-  const houses = astro.houses || astro.birthChartData?.houses || {};
+  const houses = normalizeHouses(astro, c.planets);
   const cards = [];
   for (let h = start; h <= end; h += 1) {
-    const sign = houses[`house_${h}`] || houses[h] || houses[String(h)] || null;
+    const sign = getHouseSign(houses, h, c.planets);
     const inHouse = c.planets.filter((p) => Number(p.house) === h).map((p) => p.planet).join(', ');
     let text = HOUSE_SHORT[h];
     if (h === 10 && astro.careerHouseAnalysis) text = astro.careerHouseAnalysis;
@@ -596,14 +695,15 @@ const HOUSE_DOMAINS = {
 };
 
 function buildPersonalizedHousePages(c, astro, userName) {
-  const houses = astro.houses || astro.birthChartData?.houses || {};
+  const houses = normalizeHouses(astro, c.planets);
   const houseAnalysis = (h) => {
-    const sign = houses[`house_${h}`] || houses[h] || houses[String(h)] || null;
+    const sign = getHouseSign(houses, h, c.planets);
+    const badge = getHouseBadge(h, sign, c.planets);
     const inHouse = c.planets.filter((p) => Number(p.house) === h);
     const planetNames = inHouse.map((p) => p.planet).join(', ');
 
     if (h === 10 && astro.careerHouseAnalysis) {
-      return `<div class="house-row"><div class="house-head"><strong>House ${h}</strong><span>${sign || '—'}</span></div><p>${astro.careerHouseAnalysis}</p></div>`;
+      return `<div class="house-row"><div class="house-head"><strong>House ${h}</strong><span>${badge}</span></div><p>${astro.careerHouseAnalysis}</p></div>`;
     }
 
     let text = `For ${userName}, the ${h}${h === 1 ? 'st' : h === 2 ? 'nd' : h === 3 ? 'rd' : 'th'} house`;
@@ -615,7 +715,7 @@ function buildPersonalizedHousePages(c, astro, userName) {
       text += ` The sign of ${sign} colours the expression of this domain with its natural qualities applied to your personal circumstances.`;
     }
 
-    return `<div class="house-row"><div class="house-head"><strong>House ${h}</strong><span>${sign || 'Pending chart data'}</span></div><p>${text}</p></div>`;
+    return `<div class="house-row"><div class="house-head"><strong>House ${h}</strong><span>${badge}</span></div><p>${text}</p></div>`;
   };
 
   return [

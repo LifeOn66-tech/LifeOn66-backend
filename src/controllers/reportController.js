@@ -1,6 +1,5 @@
 const pdfService = require('../services/pdfGeneratorService');
-const { collectAllImages } = require('../utils/imageResolver');
-const { enrichReportData } = require('../utils/reportDataResolver');
+const { enrichReportData, collectBodyUserDetails } = require('../utils/reportDataResolver');
 const User = require('../models/User');
 
 exports.generateReport = async (req, res) => {
@@ -44,17 +43,20 @@ exports.generateReport = async (req, res) => {
       });
     }
 
+    const bodyUserDetails = collectBodyUserDetails(req.body);
+
     const enriched = await enrichReportData(
       userId,
       analysis,
       fullData,
       user,
-      req.body?.userDetails || {}
+      bodyUserDetails
     );
 
     console.log(
       `[Report] Start ${finalTier} PDF for ${user.fullName} — images: ${enriched.imageCount.before} → ${enriched.imageCount.after}`
     );
+    console.log('[Report] Birth details:', enriched.userDetails);
 
     if (enriched.imageCount.after === 0) {
       console.warn('[Report] No images found in request or database. PDF will show placeholders.');
@@ -66,11 +68,7 @@ exports.generateReport = async (req, res) => {
       enriched.fullData,
       finalTier,
       user.fullName,
-      {
-        dateOfBirth: user.dateOfBirth || fullData?.astrology?.dateOfBirth || req.body?.userDetails?.dateOfBirth,
-        timeOfBirth: user.timeOfBirth || fullData?.astrology?.timeOfBirth || req.body?.userDetails?.timeOfBirth,
-        placeOfBirth: user.placeOfBirth || fullData?.astrology?.placeOfBirth || req.body?.userDetails?.placeOfBirth,
-      }
+      enriched.userDetails
     );
 
     const filenamePrefix =

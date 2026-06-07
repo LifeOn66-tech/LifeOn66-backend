@@ -167,8 +167,8 @@ async function generatePDF(analysis, language, fullData, tier, userName, userDet
 
         console.log(`[PDF] Printing PDF... (${Date.now() - started}ms elapsed)`);
         const buffer = await page.pdf({
-          format: 'A4',
-          printBackground: true,
+      format: 'A4',
+      printBackground: true,
           preferCSSPageSize: true,
           margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
         });

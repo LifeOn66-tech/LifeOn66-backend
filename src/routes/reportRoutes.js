@@ -11,4 +11,10 @@ router.post('/career-blueprint', protect, (req, res, next) => {
   return reportController.generateReport(req, res, next);
 });
 
+/** $10 Cosmic Master tier — 25-page exhaustive report */
+router.post('/cosmic-master', protect, (req, res, next) => {
+  req.body.tier = 'professional';
+  return reportController.generateReport(req, res, next);
+});
+
 module.exports = router;

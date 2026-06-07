@@ -44,7 +44,13 @@ exports.generateReport = async (req, res) => {
       });
     }
 
-    const enriched = await enrichReportData(userId, analysis, fullData);
+    const enriched = await enrichReportData(
+      userId,
+      analysis,
+      fullData,
+      user,
+      req.body?.userDetails || {}
+    );
 
     console.log(
       `[Report] Start ${finalTier} PDF for ${user.fullName} — images: ${enriched.imageCount.before} → ${enriched.imageCount.after}`
@@ -71,7 +77,7 @@ exports.generateReport = async (req, res) => {
       finalTier === 'premium'
         ? 'LifeOn66_Premium_Report'
         : finalTier === 'professional'
-          ? 'LifeOn66_Professional_Report'
+          ? 'LifeOn66_Cosmic_Master_Report'
           : 'LifeOn66_Report';
 
     res.set({
@@ -80,7 +86,7 @@ exports.generateReport = async (req, res) => {
       'Content-Length': pdfBuffer.length,
       'X-Report-Generator': 'lifeon66-backend',
       'X-Report-Tier': finalTier,
-      'X-Report-Pages': finalTier === 'premium' ? '15' : undefined,
+      'X-Report-Pages': finalTier === 'premium' ? '15' : finalTier === 'professional' ? '25' : undefined,
       'X-Report-Duration-Ms': String(Date.now() - started),
     });
 

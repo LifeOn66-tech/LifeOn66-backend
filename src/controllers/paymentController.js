@@ -4,6 +4,10 @@ const dns = require('dns');
 const Transaction = require('../models/Transaction');
 const User = require('../models/User');
 const { generateAndUploadReceipt } = require('../utils/receiptGenerator');
+const {
+  getReadingCompletionStatus,
+  buildIncompleteReadingsMessage,
+} = require('../utils/readingCompletion');
 
 const RAZORPAY_KEY_ID = (process.env.RAZORPAY_KEY_ID || '').trim();
 const RAZORPAY_KEY_SECRET = (process.env.RAZORPAY_KEY_SECRET || '').trim();
@@ -84,9 +88,19 @@ exports.createOrder = async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     let amountInUsd = 0;
-    if (tier === 'premium') amountInUsd = 5; 
-    else if (tier === 'professional') amountInUsd = 10; 
+    if (tier === 'premium') amountInUsd = 5;
+    else if (tier === 'professional') amountInUsd = 10;
     else return res.status(400).json({ success: false, message: 'Invalid tier' });
+
+    const readingStatus = await getReadingCompletionStatus(userId);
+    if (!readingStatus.complete) {
+      return res.status(400).json({
+        success: false,
+        message: buildIncompleteReadingsMessage(readingStatus),
+        code: 'READINGS_INCOMPLETE',
+        readings: readingStatus,
+      });
+    }
 
     const conversionRate = 85; 
     const amountInInr = amountInUsd * conversionRate;
@@ -155,9 +169,18 @@ exports.verifyRazorpayPayment = async (req, res) => {
     const isSignatureValid = expectedSignature === razorpay_signature;
 
     if (isSignatureValid) {
-      // Fulfill the purchase
       const transaction = await Transaction.findOne({ razorpayOrderId: razorpay_order_id });
       if (transaction) {
+        const readingStatus = await getReadingCompletionStatus(transaction.user);
+        if (!readingStatus.complete) {
+          return res.status(400).json({
+            success: false,
+            message: buildIncompleteReadingsMessage(readingStatus),
+            code: 'READINGS_INCOMPLETE',
+            readings: readingStatus,
+          });
+        }
+
         transaction.status = 'completed';
         transaction.razorpayPaymentId = razorpay_payment_id;
         transaction.razorpaySignature = razorpay_signature;

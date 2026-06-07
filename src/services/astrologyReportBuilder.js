@@ -747,7 +747,8 @@ function buildPalmLineDeepDive(c, palm) {
     </div>`;
 }
 
-function brandCover(theme, userName) {
+function brandCover(theme, userName, userDetails = {}) {
+  const reportDate = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   return `
     <div class="cover">
       <div class="cover-band"></div>
@@ -758,9 +759,27 @@ function brandCover(theme, userName) {
         <p class="cover-subtitle">Integrated Analysis: Astrology · Palmistry · Face Reading · Career Strategy</p>
         <div class="cover-meta-simple">
           <p><strong>Prepared for:</strong> ${userName}</p>
-          <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+          <p><strong>Date of Birth:</strong> ${userDetails.dateOfBirth || '—'}</p>
+          <p><strong>Time of Birth:</strong> ${userDetails.timeOfBirth || '—'}</p>
+          <p><strong>Place of Birth:</strong> ${userDetails.placeOfBirth || '—'}</p>
+          <p><strong>Report Date:</strong> ${reportDate}</p>
         </div>
       </div>
+    </div>`;
+}
+
+function buildFreeOverviewPage(c, userName, userDetails, theme) {
+  return `
+    ${sectionHeader('Report Overview')}
+    <div class="content-card compact-card">
+      <div class="stats-row">
+        ${statCard('Confidence Score', `${c.confidence}%`)}
+        ${statCard('Report Tier', theme.label || 'Cosmic Explorer')}
+      </div>
+      ${userDetailsTable(userName, userDetails)}
+      <p class="panel-title" style="margin-top:12px">Included in Your Free Report</p>
+      ${featureGrid(FREE_INCLUSIONS)}
+      <p class="lead-text" style="margin-top:14px"><strong>Summary:</strong> ${c.intro}</p>
     </div>`;
 }
 
@@ -863,11 +882,13 @@ function buildFreePages(analysis, fullData, userName, userDetails, images) {
   const c = buildContent(analysis, fullData, 'free', userName, userDetails);
   const pages = [];
 
-  pages.push(brandCover(theme, userName));
+  pages.push(brandCover(theme, userName, userDetails));
+  pages.push(buildFreeOverviewPage(c, userName, userDetails, theme));
 
   pages.push(`
     ${sectionHeader('Astrology Deep Analysis')}
     <div class="content-card">
+      <p class="section-intro">Vedic chart analysis for ${userName}${userDetailsLabel(userDetails)}.</p>
       ${c.astrologyParagraphs.map((p) => `<p>${p}</p>`).join('')}
     </div>`);
 

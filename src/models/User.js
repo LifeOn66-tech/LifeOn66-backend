@@ -31,6 +31,7 @@ const UserSchema = new mongoose.Schema({
   },
   avatar: String,
   fullName: String,
+  gender: String,
   dateOfBirth: String,
   timeOfBirth: String,
   placeOfBirth: String,

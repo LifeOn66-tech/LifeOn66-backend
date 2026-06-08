@@ -439,6 +439,7 @@ function userDetailsTable(userName, userDetails) {
   return `
     <table class="details-table pro-table">
       <tr><td>Full Name</td><td>${userName}</td></tr>
+      <tr><td>Gender</td><td>${userDetails.gender || '—'}</td></tr>
       <tr><td>Date of Birth</td><td>${userDetails.dateOfBirth || '—'}</td></tr>
       <tr><td>Time of Birth</td><td>${userDetails.timeOfBirth || '—'}</td></tr>
       <tr><td>Place of Birth</td><td>${userDetails.placeOfBirth || '—'}</td></tr>
@@ -478,6 +479,7 @@ function buildPremiumOverviewPage(c, userName, userDetails, theme) {
       </div>
       <table class="details-table pro-table">
         <tr><td>Full Name</td><td>${userName}</td></tr>
+        <tr><td>Gender</td><td>${userDetails.gender || '—'}</td></tr>
         <tr><td>Date of Birth</td><td>${userDetails.dateOfBirth || '—'}</td></tr>
         <tr><td>Time of Birth</td><td>${userDetails.timeOfBirth || '—'}</td></tr>
         <tr><td>Place of Birth</td><td>${userDetails.placeOfBirth || '—'}</td></tr>
@@ -488,7 +490,7 @@ function buildPremiumOverviewPage(c, userName, userDetails, theme) {
     </div>`;
 }
 
-function buildAstrologyDeepAnalysisPage(c, astro, theme) {
+function buildAstrologyDeepAnalysisPage(c, astro, theme, userName = '', userDetails = {}) {
   let dashaItems = c.dashas.length ? c.dashas : [];
   if (!dashaItems.length && c.future?.length) {
     dashaItems = c.future.map((p) => ({
@@ -512,10 +514,12 @@ function buildAstrologyDeepAnalysisPage(c, astro, theme) {
   return `
     ${sectionHeader('Astrology Deep Analysis')}
     <div class="content-card compact-card">
+      <p class="section-intro">Vedic birth chart analysis for <strong>${userName || 'you'}</strong>${userDetailsLabel(userDetails)}.</p>
       <div class="premium-meta-row">
         ${statCard('Confidence Score', `${c.confidence}%`)}
         <div class="stat-card"><span class="stat-label">Plan Tier</span><span class="stat-value stat-value-sm">${theme.label || 'Astral Navigator'}</span></div>
       </div>
+      ${userDetails.gender ? `<p><strong>Gender:</strong> ${userDetails.gender}</p>` : ''}
       ${c.astrologyParagraphs.map((p) => `<p>${p}</p>`).join('')}
       <p class="panel-title" style="margin-top:10px">Planetary Periods</p>
       ${dashaBlock}
@@ -759,6 +763,7 @@ function brandCover(theme, userName, userDetails = {}) {
         <p class="cover-subtitle">Integrated Analysis: Astrology · Palmistry · Face Reading · Career Strategy</p>
         <div class="cover-meta-simple">
           <p><strong>Prepared for:</strong> ${userName}</p>
+          <p><strong>Gender:</strong> ${userDetails.gender || '—'}</p>
           <p><strong>Date of Birth:</strong> ${userDetails.dateOfBirth || '—'}</p>
           <p><strong>Time of Birth:</strong> ${userDetails.timeOfBirth || '—'}</p>
           <p><strong>Place of Birth:</strong> ${userDetails.placeOfBirth || '—'}</p>
@@ -926,6 +931,7 @@ function masterCoverPage(userName, userDetails, theme) {
         <p class="cover-subtitle">${theme.tagline || 'The ultimate detailed analysis with full reading explanations.'}</p>
         <div class="cover-meta-simple">
           <p><strong>Prepared for:</strong> ${userName}</p>
+          <p><strong>Gender:</strong> ${userDetails.gender || '—'}</p>
           <p><strong>Date of Birth:</strong> ${userDetails.dateOfBirth || '—'}</p>
           <p><strong>Time of Birth:</strong> ${userDetails.timeOfBirth || '—'}</p>
           <p><strong>Place of Birth:</strong> ${userDetails.placeOfBirth || '—'}</p>
@@ -949,6 +955,7 @@ function buildMasterOverviewPage(c, userName, userDetails, theme) {
       </div>
       <table class="details-table pro-table">
         <tr><td>Full Name</td><td>${userName}</td></tr>
+        <tr><td>Gender</td><td>${userDetails.gender || '—'}</td></tr>
         <tr><td>Date of Birth</td><td>${userDetails.dateOfBirth || '—'}</td></tr>
         <tr><td>Time of Birth</td><td>${userDetails.timeOfBirth || '—'}</td></tr>
         <tr><td>Place of Birth</td><td>${userDetails.placeOfBirth || '—'}</td></tr>
@@ -983,10 +990,12 @@ function buildDoshaYogaPage(c, astro, userName, userDetails = {}) {
 }
 
 function userDetailsLabel(userDetails = {}) {
+  const parts = [];
+  if (userDetails.gender) parts.push(userDetails.gender);
   if (userDetails.dateOfBirth && userDetails.placeOfBirth) {
-    return ` — born ${userDetails.dateOfBirth} at ${userDetails.timeOfBirth || '—'} in ${userDetails.placeOfBirth}`;
+    parts.push(`born ${userDetails.dateOfBirth} at ${userDetails.timeOfBirth || '—'} in ${userDetails.placeOfBirth}`);
   }
-  return '';
+  return parts.length ? ` — ${parts.join(', ')}` : '';
 }
 
 function buildDeepPalmInterpretationPage(c, palm, userName) {
@@ -1157,7 +1166,7 @@ function buildPremiumPages(analysis, fullData, userName, userDetails, images) {
   const pages = [
     premiumCoverPage(userName, theme),
     buildPremiumOverviewPage(c, userName, userDetails, theme),
-    buildAstrologyDeepAnalysisPage(c, astro, theme),
+    buildAstrologyDeepAnalysisPage(c, astro, theme, userName, userDetails),
     buildHouseGridPage(1, 6, astro, c),
     buildHouseGridPage(7, 12, astro, c),
     premiumImageAnalysisPage('Palmistry — Left Hand (Innate)', slotImage(images, fullData, 'palmLeft'), c.palmLeftParagraphs, 'palm'),
@@ -1187,7 +1196,7 @@ function buildProfessionalPages(analysis, fullData, userName, userDetails, image
     masterCoverPage(userName, userDetails, theme),
     buildMasterOverviewPage(c, userName, userDetails, theme),
     buildExecutiveSummaryPage(c, userName),
-    buildAstrologyDeepAnalysisPage(c, astro, theme),
+    buildAstrologyDeepAnalysisPage(c, astro, theme, userName, userDetails),
     buildPlanetaryPeriodsPage(c, astro, userName),
     buildDoshaYogaPage(c, astro, userName, userDetails),
     housePages[0],

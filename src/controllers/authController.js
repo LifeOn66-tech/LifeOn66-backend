@@ -7,6 +7,7 @@ function formatUserResponse(user) {
     id: user._id.toString(),
     email: user.email,
     fullName: user.fullName || '',
+    gender: user.gender || '',
     dateOfBirth: user.dateOfBirth || '',
     timeOfBirth: user.timeOfBirth || '',
     placeOfBirth: user.placeOfBirth || '',
@@ -191,9 +192,10 @@ exports.updateProfile = async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    const { fullName, dateOfBirth, timeOfBirth, placeOfBirth } = req.body;
+    const { fullName, gender, dateOfBirth, timeOfBirth, placeOfBirth } = req.body;
 
     if (fullName != null) user.fullName = String(fullName).trim();
+    if (gender != null) user.gender = String(gender).trim();
     if (dateOfBirth != null) user.dateOfBirth = String(dateOfBirth).trim();
     if (timeOfBirth != null) user.timeOfBirth = String(timeOfBirth).trim();
     if (placeOfBirth != null) user.placeOfBirth = String(placeOfBirth).trim();

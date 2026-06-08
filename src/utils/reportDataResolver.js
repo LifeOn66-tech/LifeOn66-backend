@@ -286,15 +286,34 @@ const PLACE_KEYS = [
   'location',
 ];
 
+const GENDER_KEYS = ['gender', 'sex', 'userGender'];
+
+const GENDER_LABELS = {
+  male: 'Male',
+  female: 'Female',
+  other: 'Other',
+  'prefer not to say': 'Prefer not to say',
+  'prefer_not_to_say': 'Prefer not to say',
+};
+
+function formatGenderValue(val) {
+  if (val == null || val === '') return null;
+  const raw = String(val).trim();
+  if (!raw) return null;
+  const normalized = raw.toLowerCase().replace(/_/g, ' ');
+  return GENDER_LABELS[normalized] || raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 function collectBirthValues(obj, depth = 0, visited = new WeakSet()) {
   const dates = [];
   const times = [];
   const places = [];
+  const genders = [];
 
   if (!obj || typeof obj !== 'object' || depth > 5) {
-    return { dates, times, places };
+    return { dates, times, places, genders };
   }
-  if (visited.has(obj)) return { dates, times, places };
+  if (visited.has(obj)) return { dates, times, places, genders };
   visited.add(obj);
 
   for (const key of DATE_KEYS) {
@@ -310,6 +329,10 @@ function collectBirthValues(obj, depth = 0, visited = new WeakSet()) {
 
   for (const key of PLACE_KEYS) {
     if (obj[key] != null && obj[key] !== '') places.push(obj[key]);
+  }
+
+  for (const key of GENDER_KEYS) {
+    if (obj[key] != null && obj[key] !== '') genders.push(obj[key]);
   }
 
   const nestedKeys = [
@@ -329,10 +352,11 @@ function collectBirthValues(obj, depth = 0, visited = new WeakSet()) {
       dates.push(...nested.dates);
       times.push(...nested.times);
       places.push(...nested.places);
+      genders.push(...nested.genders);
     }
   }
 
-  return { dates, times, places };
+  return { dates, times, places, genders };
 }
 
 function pickFirstFormatted(values) {
@@ -347,6 +371,7 @@ function collectBodyUserDetails(body = {}) {
   return {
     ...(body.userDetails || {}),
     ...(body.birthDetails || {}),
+    gender: body.gender ?? body.userDetails?.gender ?? body.birthDetails?.gender,
     dateOfBirth: body.dateOfBirth ?? body.userDetails?.dateOfBirth ?? body.birthDetails?.dateOfBirth,
     timeOfBirth: body.timeOfBirth ?? body.userDetails?.timeOfBirth ?? body.birthDetails?.timeOfBirth,
     placeOfBirth: body.placeOfBirth ?? body.userDetails?.placeOfBirth ?? body.birthDetails?.placeOfBirth,
@@ -367,6 +392,7 @@ function resolveUserDetails(
   const dateCandidates = [];
   const timeCandidates = [];
   const placeCandidates = [];
+  const genderCandidates = [];
 
   const addSource = (...sources) => {
     for (const source of sources) {
@@ -375,6 +401,7 @@ function resolveUserDetails(
       dateCandidates.push(...collected.dates);
       timeCandidates.push(...collected.times);
       placeCandidates.push(...collected.places);
+      genderCandidates.push(...collected.genders);
     }
   };
 
@@ -386,6 +413,7 @@ function resolveUserDetails(
   addSource(user);
 
   return {
+    gender: genderCandidates.map(formatGenderValue).find(Boolean) || null,
     dateOfBirth: pickFirstFormatted(dateCandidates),
     timeOfBirth: pickFirstFormatted(timeCandidates),
     placeOfBirth: pickFirstFormatted(placeCandidates),
@@ -395,6 +423,7 @@ function resolveUserDetails(
 async function syncUserBirthDetails(userId, details) {
   if (!userId || !details) return;
   const updates = {};
+  if (details.gender) updates.gender = details.gender;
   if (details.dateOfBirth) updates.dateOfBirth = details.dateOfBirth;
   if (details.timeOfBirth) updates.timeOfBirth = details.timeOfBirth;
   if (details.placeOfBirth) updates.placeOfBirth = details.placeOfBirth;
@@ -410,4 +439,5 @@ module.exports = {
   resolveUserDetails,
   collectBodyUserDetails,
   syncUserBirthDetails,
+  formatGenderValue,
 };

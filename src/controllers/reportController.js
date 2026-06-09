@@ -66,9 +66,9 @@ exports.generateReport = async (req, res) => {
     if (!validation.ok) {
       return res.status(400).json({
         success: false,
-        message: 'Personalized chart data required before generating this report.',
+        message: 'Your birth chart is missing required details. Please regenerate your chart.',
         missing: validation.missing,
-        hint: 'Complete astrology-generate → save astrology reading → then download the report.',
+        hint: 'Complete your astrology reading with date, time, and place of birth — or update your profile — then try again.',
       });
     }
 

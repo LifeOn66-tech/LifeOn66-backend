@@ -24,20 +24,42 @@ exports.saveAstrologyReading = async (req, res) => {
       req.body.userDetails?.gender;
     if (gender) req.body.gender = formatGenderValue(gender) || String(gender).trim();
 
-    if (req.body.birthChartData?.chartSvg && !req.body.chartSvg) {
-      req.body.chartSvg = req.body.birthChartData.chartSvg;
-    }
-    if (req.body.birthChartData?.chartImageDataUrl && !req.body.chartImageDataUrl) {
-      req.body.chartImageDataUrl = req.body.birthChartData.chartImageDataUrl;
-    }
-    if (req.body.birthChartData?.planets?.length && !req.body.planets?.length) {
-      req.body.planets = req.body.birthChartData.planets;
-    }
-    if (req.body.birthChartData?.houses && !req.body.houses) {
-      req.body.houses = req.body.birthChartData.houses;
-    }
+    const bcd = req.body.birthChartData || {};
+    const copyIfMissing = (field) => {
+      if (bcd[field] != null && req.body[field] == null) req.body[field] = bcd[field];
+    };
+
+    copyIfMissing('chartSvg');
+    copyIfMissing('chartImageDataUrl');
+    copyIfMissing('planets');
+    copyIfMissing('houses');
+    copyIfMissing('yogas');
+    copyIfMissing('ascendant');
+    copyIfMissing('lagna');
+    copyIfMissing('nakshatra');
+    copyIfMissing('planetInterpretations');
+    copyIfMissing('analysisParagraphs');
+    copyIfMissing('careerPaths');
+    copyIfMissing('favorablePeriods');
+    copyIfMissing('careerHouseAnalysis');
+    copyIfMissing('careerRecommendations');
+
+    if (!req.body.planets?.length && bcd.planets?.length) req.body.planets = bcd.planets;
+    if (!req.body.houses && bcd.houses) req.body.houses = bcd.houses;
     if (!req.body.dashas?.length && req.body.planetaryPeriods?.length) {
       req.body.dashas = req.body.planetaryPeriods;
+    }
+    if (!req.body.dashas?.length && bcd.dashas?.length) req.body.dashas = bcd.dashas;
+    if (!req.body.birthChartData && req.body.planets?.length) {
+      req.body.birthChartData = {
+        ...bcd,
+        planets: req.body.planets,
+        houses: req.body.houses,
+        chartSvg: req.body.chartSvg,
+        chartImageDataUrl: req.body.chartImageDataUrl,
+        planetInterpretations: req.body.planetInterpretations,
+        analysisParagraphs: req.body.analysisParagraphs,
+      };
     }
 
     const reading = await AstrologyReading.create(req.body);

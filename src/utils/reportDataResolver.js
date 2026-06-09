@@ -159,6 +159,188 @@ async function getOrBuildCareerInsight(userId) {
 const { SIGN_NAMES } = require('../services/vedicAstrologyConstants');
 const { generateFullReading } = require('../services/vedicInterpretationEngine');
 
+function hasChartPlanets(astro = {}) {
+  return Boolean(astro.planets?.length || astro.birthChartData?.planets?.length);
+}
+
+function hasChartInterpretation(astro = {}) {
+  const bcd = astro.birthChartData || {};
+  return Boolean(
+    astro.analysisParagraphs?.length ||
+    astro.planetInterpretations?.length ||
+    bcd.analysisParagraphs?.length ||
+    bcd.planetInterpretations?.length ||
+    astro.careerHouseAnalysis ||
+    bcd.careerHouseAnalysis
+  );
+}
+
+function parseDateParts(dateStr) {
+  if (dateStr == null || dateStr === '') return null;
+  if (typeof dateStr === 'object') {
+    const day = Number(dateStr.day ?? dateStr.date?.day);
+    const month = Number(dateStr.month ?? dateStr.date?.month);
+    const year = Number(dateStr.year ?? dateStr.date?.year);
+    if (day && month && year) return { day, month, year };
+  }
+  const trimmed = String(dateStr).trim();
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return { day: parsed.getDate(), month: parsed.getMonth() + 1, year: parsed.getFullYear() };
+  }
+  const dmy = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (dmy) return { day: Number(dmy[1]), month: Number(dmy[2]), year: Number(dmy[3]) };
+  return null;
+}
+
+function parseTimeParts(timeStr) {
+  if (timeStr == null || timeStr === '') return { hour: 12, minute: 0 };
+  if (typeof timeStr === 'object') {
+    return {
+      hour: Number(timeStr.hour ?? timeStr.hours ?? 12),
+      minute: Number(timeStr.minute ?? timeStr.minutes ?? timeStr.min ?? 0),
+    };
+  }
+  const match = String(timeStr).trim().match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?/i);
+  if (!match) return { hour: 12, minute: 0 };
+  let hour = Number(match[1]);
+  const minute = Number(match[2]);
+  const ampm = match[3]?.toLowerCase();
+  if (ampm === 'pm' && hour < 12) hour += 12;
+  if (ampm === 'am' && hour === 12) hour = 0;
+  return { hour, minute };
+}
+
+function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyUserDetails = {}) {
+  const bcd = astrologyDoc?.birthChartData || {};
+  const birthInput = bcd.birthInput || {};
+  const coords = bcd.coordinates || {};
+
+  const dateParts =
+    parseDateParts(
+      birthInput.day != null
+        ? { day: birthInput.day, month: birthInput.month, year: birthInput.year }
+        : null
+    ) ||
+    parseDateParts(bodyUserDetails.dateOfBirth) ||
+    parseDateParts(userDetails.dateOfBirth) ||
+    parseDateParts(astrologyDoc?.dateOfBirth);
+
+  if (!dateParts) return null;
+
+  const timeParts =
+    parseTimeParts(
+      birthInput.hour != null
+        ? { hour: birthInput.hour, minute: birthInput.minute ?? birthInput.min ?? 0 }
+        : null
+    ) ||
+    parseTimeParts(bodyUserDetails.timeOfBirth) ||
+    parseTimeParts(userDetails.timeOfBirth) ||
+    parseTimeParts(astrologyDoc?.timeOfBirth);
+
+  const place =
+    birthInput.place ||
+    bodyUserDetails.placeOfBirth ||
+    userDetails.placeOfBirth ||
+    astrologyDoc?.placeOfBirth ||
+    null;
+
+  const gender =
+    birthInput.gender ||
+    bodyUserDetails.gender ||
+    userDetails.gender ||
+    astrologyDoc?.gender ||
+    null;
+
+  return {
+    day: dateParts.day,
+    month: dateParts.month,
+    year: dateParts.year,
+    hour: timeParts.hour,
+    minute: timeParts.minute,
+    lat: Number(coords.lat ?? birthInput.lat ?? 25.42),
+    lon: Number(coords.lon ?? birthInput.lon ?? 86.13),
+    place,
+    gender,
+  };
+}
+
+function chartPayloadToAstrology(chart) {
+  if (!chart) return {};
+  return {
+    planets: chart.planets,
+    houses: chart.houses,
+    dashas: chart.dashas,
+    yogas: chart.yogas,
+    chartSvg: chart.chartSvg,
+    chartImageDataUrl: chart.chartImageDataUrl,
+    ascendant: chart.ascendant || chart.lagna,
+    lagna: chart.lagna || chart.ascendant,
+    nakshatra: chart.nakshatra,
+    careerHouseAnalysis: chart.careerHouseAnalysis,
+    careerRecommendations: chart.careerRecommendations,
+    favorablePeriods: chart.favorablePeriods,
+    analysisParagraphs: chart.analysisParagraphs,
+    planetInterpretations: chart.planetInterpretations,
+    careerPaths: chart.careerPaths,
+    birthChartData: chart.birthChartData,
+  };
+}
+
+async function ensureAstrologyChartData(astrology = {}, userDetails = {}, astrologyDoc = null, bodyUserDetails = {}) {
+  if (hasChartPlanets(astrology)) {
+    return astrology;
+  }
+
+  const chartInput = buildChartInputFromSources(userDetails, astrologyDoc, bodyUserDetails);
+  if (!chartInput) return astrology;
+
+  try {
+    const { generateVedicChart } = require('../services/vedicChartService');
+    const chart = await generateVedicChart(chartInput);
+    const generated = chartPayloadToAstrology(chart);
+
+    if (astrologyDoc?._id && !hasChartPlanets(astrologyDoc)) {
+      AstrologyReading.findByIdAndUpdate(astrologyDoc._id, {
+        $set: {
+          planets: generated.planets,
+          houses: generated.houses,
+          dashas: generated.dashas,
+          yogas: generated.yogas,
+          chartSvg: generated.chartSvg,
+          chartImageDataUrl: generated.chartImageDataUrl,
+          ascendant: generated.ascendant,
+          lagna: generated.lagna,
+          nakshatra: generated.nakshatra,
+          careerHouseAnalysis: generated.careerHouseAnalysis,
+          careerRecommendations: generated.careerRecommendations,
+          favorablePeriods: generated.favorablePeriods,
+          analysisParagraphs: generated.analysisParagraphs,
+          planetInterpretations: generated.planetInterpretations,
+          careerPaths: generated.careerPaths,
+          birthChartData: generated.birthChartData,
+          dateOfBirth: userDetails.dateOfBirth || astrologyDoc.dateOfBirth,
+          timeOfBirth: userDetails.timeOfBirth || astrologyDoc.timeOfBirth,
+          placeOfBirth: userDetails.placeOfBirth || astrologyDoc.placeOfBirth,
+        },
+      }).catch((err) => console.warn('[Report] Could not backfill astrology reading:', err.message));
+    }
+
+    return {
+      ...astrology,
+      ...generated,
+      birthChartData: {
+        ...(astrology.birthChartData || {}),
+        ...(generated.birthChartData || {}),
+      },
+      analysisSource: chart.analysisSource || 'vedic-chart-regenerated',
+    };
+  } catch (err) {
+    console.warn('[Report] Chart auto-regeneration failed:', err.message);
+    return astrology;
+  }
+}
+
 /**
  * Rebuilds per-chart interpretation from saved planetary positions when analysis text is missing.
  */
@@ -173,6 +355,15 @@ function hydrateChartAnalysis(astrologyDoc) {
   const lagnaSign = bcd.lagnaSign || astrologyDoc.ascendant || astrologyDoc.lagna;
   if ((lagnaSignIndex == null || lagnaSignIndex < 0) && lagnaSign) {
     lagnaSignIndex = SIGN_NAMES.findIndex((s) => s.toLowerCase() === String(lagnaSign).toLowerCase());
+  }
+  if ((lagnaSignIndex == null || lagnaSignIndex < 0) && bcd.houses?.house_1) {
+    lagnaSignIndex = SIGN_NAMES.findIndex(
+      (s) => s.toLowerCase() === String(bcd.houses.house_1).toLowerCase()
+    );
+  }
+  if (lagnaSignIndex == null || lagnaSignIndex < 0) {
+    const ref = planets.find((p) => p.signIndex != null && p.house != null);
+    if (ref) lagnaSignIndex = (ref.signIndex - (ref.house - 1) + 12) % 12;
   }
   if (lagnaSignIndex == null || lagnaSignIndex < 0) return {};
 
@@ -216,12 +407,10 @@ function hydrateChartAnalysis(astrologyDoc) {
 function validatePersonalizedReport(enriched) {
   const astro = enriched.fullData?.astrology || {};
   const missing = [];
-  if (!(astro.planets?.length || astro.birthChartData?.planets?.length)) {
-    missing.push('calculated birth chart (call POST /api/readings/astrology-generate first)');
+  if (!hasChartPlanets(astro)) {
+    missing.push('calculated birth chart (complete astrology reading or save birth date/time/place on profile)');
   }
-  const paragraphs = astro.analysisParagraphs?.length || astro.birthChartData?.analysisParagraphs?.length;
-  const planetInterp = astro.planetInterpretations?.length || astro.birthChartData?.planetInterpretations?.length;
-  if (!paragraphs && !planetInterp) {
+  if (hasChartPlanets(astro) && !hasChartInterpretation(astro)) {
     missing.push('chart interpretation (save your astrology reading after chart generation)');
   }
   return { ok: missing.length === 0, missing };
@@ -298,7 +487,30 @@ async function enrichReportData(userId, analysis = {}, fullData = {}, user = nul
     },
   };
 
-  const chartHydration = hydrateChartAnalysis(astrologyDoc);
+  const preliminaryUserDetails = resolveUserDetails(
+    user,
+    astrologyDoc,
+    enrichedFullData,
+    bodyUserDetails,
+    analysis,
+    fullData
+  );
+
+  enrichedFullData.astrology = await ensureAstrologyChartData(
+    enrichedFullData.astrology,
+    preliminaryUserDetails,
+    astrologyDoc,
+    bodyUserDetails
+  );
+
+  const chartHydration = hydrateChartAnalysis({
+    ...(astrologyDoc || {}),
+    ...enrichedFullData.astrology,
+    birthChartData: {
+      ...(astrologyDoc?.birthChartData || {}),
+      ...(enrichedFullData.astrology.birthChartData || {}),
+    },
+  });
   if (Object.keys(chartHydration).length) {
     enrichedFullData.astrology = {
       ...enrichedFullData.astrology,
@@ -616,4 +828,5 @@ module.exports = {
   formatGenderValue,
   hydrateChartAnalysis,
   validatePersonalizedReport,
+  ensureAstrologyChartData,
 };

@@ -1,5 +1,9 @@
 const pdfService = require('../services/pdfGeneratorService');
-const { enrichReportData, collectBodyUserDetails } = require('../utils/reportDataResolver');
+const {
+  enrichReportData,
+  collectBodyUserDetails,
+  validatePersonalizedReport,
+} = require('../utils/reportDataResolver');
 const User = require('../models/User');
 
 exports.generateReport = async (req, res) => {
@@ -57,6 +61,16 @@ exports.generateReport = async (req, res) => {
       `[Report] Start ${finalTier} PDF for ${user.fullName} — images: ${enriched.imageCount.before} → ${enriched.imageCount.after}`
     );
     console.log('[Report] Birth details:', enriched.userDetails);
+
+    const validation = validatePersonalizedReport(enriched);
+    if (!validation.ok) {
+      return res.status(400).json({
+        success: false,
+        message: 'Personalized chart data required before generating this report.',
+        missing: validation.missing,
+        hint: 'Complete astrology-generate → save astrology reading → then download the report.',
+      });
+    }
 
     if (enriched.imageCount.after === 0) {
       console.warn('[Report] No images found in request or database. PDF will show placeholders.');

@@ -63,6 +63,66 @@ async function getOrBuildCareerInsight(userId) {
     return null;
   }
 
+  const { synthesizeCareerInsight, isAiEnabled } = require('../services/aiReadingService');
+
+  if (isAiEnabled() && astrologyDoc) {
+    try {
+      const aiSynthesis = await synthesizeCareerInsight({
+        astrology: {
+          lagna: astrologyDoc.birthChartData?.lagnaSign || astrologyDoc.ascendant,
+          careerHouseAnalysis: astrologyDoc.careerHouseAnalysis,
+          careerRecommendations: astrologyDoc.careerRecommendations,
+          planets: astrologyDoc.planets || astrologyDoc.birthChartData?.planets,
+          dashas: astrologyDoc.dashas || astrologyDoc.planetaryPeriods,
+          yogas: astrologyDoc.yogas,
+          favorablePeriods: astrologyDoc.favorablePeriods,
+        },
+        palmistry: palmistryDoc
+          ? {
+              fateLineAnalysis: palmistryDoc.fateLineAnalysis,
+              headLineAnalysis: palmistryDoc.headLineAnalysis,
+              sunLineAnalysis: palmistryDoc.sunLineAnalysis,
+              careerRecommendations: palmistryDoc.careerRecommendations,
+            }
+          : null,
+        face: faceDoc
+          ? {
+              personalityTraits: faceDoc.personalityTraits,
+              careerRecommendations: faceDoc.careerRecommendations,
+              leadershipScore: faceDoc.leadershipScore,
+            }
+          : null,
+        userDetails: {
+          gender: astrologyDoc.gender,
+          dateOfBirth: astrologyDoc.dateOfBirth,
+          placeOfBirth: astrologyDoc.placeOfBirth,
+        },
+      });
+
+      if (aiSynthesis) {
+        return {
+          data: {
+            astrologyReadingId: astrologyDoc?._id,
+            palmistryReadingId: palmistryDoc?._id,
+            faceReadingId: faceDoc?._id,
+            synthesizedRecommendation: aiSynthesis.synthesizedRecommendation,
+            topCareerPaths: aiSynthesis.topCareerPaths || [],
+            strengths: aiSynthesis.strengths || [],
+            challenges: aiSynthesis.challenges || [],
+            confidenceScore: aiSynthesis.confidenceScore || 85,
+            bestTiming: astrologyDoc?.favorablePeriods,
+            sixMonthPathway: aiSynthesis.sixMonthPathway || [],
+            threeYearPathway: aiSynthesis.threeYearPathway || [],
+            aiGenerated: true,
+          },
+          synthesized: true,
+        };
+      }
+    } catch (err) {
+      console.warn('AI career synthesis failed, using rule-based merge:', err.message);
+    }
+  }
+
   const traits = typeof faceDoc?.personalityTraits === 'object' ? faceDoc.personalityTraits : {};
   const careerText = [
     palmistryDoc?.careerRecommendations,
@@ -70,17 +130,17 @@ async function getOrBuildCareerInsight(userId) {
     astrologyDoc?.careerRecommendations,
   ].filter(Boolean);
 
+  const astroPaths = astrologyDoc?.birthChartData?.careerPaths || astrologyDoc?.careerPaths;
+
   return {
     data: {
       astrologyReadingId: astrologyDoc?._id,
       palmistryReadingId: palmistryDoc?._id,
       faceReadingId: faceDoc?._id,
-      synthesizedRecommendation:
-        careerText.join(' ') ||
-        'Your combined readings point toward leadership, analytical strength, and long-term career growth.',
-      topCareerPaths: careerText.length
-        ? careerText.map((title, i) => ({ title, match: `${90 - i * 3}%` }))
-        : [],
+      synthesizedRecommendation: careerText.join(' ') || astroPaths?.[0]?.reasoning || null,
+      topCareerPaths: astroPaths?.length
+        ? astroPaths.map((p) => ({ title: p.title, match: p.match, reasoning: p.reasoning }))
+        : careerText.map((title) => ({ title, reasoning: title })),
       strengths: traits.strengths || [],
       challenges: traits.challenges || [],
       confidenceScore:
@@ -96,6 +156,77 @@ async function getOrBuildCareerInsight(userId) {
 /**
  * Loads the user's linked readings (via CareerInsight IDs) and merges images + analysis.
  */
+const { SIGN_NAMES } = require('../services/vedicAstrologyConstants');
+const { generateFullReading } = require('../services/vedicInterpretationEngine');
+
+/**
+ * Rebuilds per-chart interpretation from saved planetary positions when analysis text is missing.
+ */
+function hydrateChartAnalysis(astrologyDoc) {
+  if (!astrologyDoc) return {};
+
+  const bcd = astrologyDoc.birthChartData || {};
+  const planets = astrologyDoc.planets?.length ? astrologyDoc.planets : (bcd.planets || []);
+  if (!planets.length) return {};
+
+  let lagnaSignIndex = bcd.lagnaSignIndex;
+  const lagnaSign = bcd.lagnaSign || astrologyDoc.ascendant || astrologyDoc.lagna;
+  if ((lagnaSignIndex == null || lagnaSignIndex < 0) && lagnaSign) {
+    lagnaSignIndex = SIGN_NAMES.findIndex((s) => s.toLowerCase() === String(lagnaSign).toLowerCase());
+  }
+  if (lagnaSignIndex == null || lagnaSignIndex < 0) return {};
+
+  const existingParagraphs = bcd.analysisParagraphs || astrologyDoc.analysisParagraphs;
+  const existingPlanetInterp = bcd.planetInterpretations || astrologyDoc.planetInterpretations;
+  if (existingParagraphs?.length && existingPlanetInterp?.length) return {};
+
+  const dashas = astrologyDoc.dashas?.length
+    ? astrologyDoc.dashas
+    : (astrologyDoc.planetaryPeriods || bcd.dashas || []);
+  const yogasRaw = astrologyDoc.yogas?.length ? astrologyDoc.yogas : (bcd.yogas || []);
+  const yogas = Array.isArray(yogasRaw)
+    ? yogasRaw.map((y) => (typeof y === 'string' ? y : y.description || y.name || '')).filter(Boolean)
+    : [];
+
+  const reading = generateFullReading({
+    planets,
+    lagnaSignIndex,
+    lagnaSign: lagnaSign || SIGN_NAMES[lagnaSignIndex],
+    lagnaDegree: bcd.lagnaDegree || 0,
+    panchanga: bcd.panchanga || {
+      nakshatra: { name: bcd.nakshatra || astrologyDoc.nakshatra, pada: bcd.nakshatraPada || bcd.pada },
+    },
+    dashas,
+    yogas,
+    gender: astrologyDoc.gender || bcd.birthInput?.gender,
+  });
+
+  return {
+    analysisParagraphs: existingParagraphs?.length ? existingParagraphs : reading.paragraphs,
+    planetInterpretations: existingPlanetInterp?.length ? existingPlanetInterp : reading.planetInterpretations,
+    careerHouseAnalysis: astrologyDoc.careerHouseAnalysis || reading.careerHouseAnalysis,
+    careerRecommendations: astrologyDoc.careerRecommendations || reading.careerRecommendations,
+    careerPaths: bcd.careerPaths || astrologyDoc.careerPaths || reading.careerPaths,
+    favorablePeriods: astrologyDoc.favorablePeriods?.length ? astrologyDoc.favorablePeriods : reading.favorablePeriods,
+    dashaAnalysis: bcd.dashaAnalysis || reading.dashaAnalysis,
+    analysisSource: 'vedic-chart-hydrated',
+  };
+}
+
+function validatePersonalizedReport(enriched) {
+  const astro = enriched.fullData?.astrology || {};
+  const missing = [];
+  if (!(astro.planets?.length || astro.birthChartData?.planets?.length)) {
+    missing.push('calculated birth chart (call POST /api/readings/astrology-generate first)');
+  }
+  const paragraphs = astro.analysisParagraphs?.length || astro.birthChartData?.analysisParagraphs?.length;
+  const planetInterp = astro.planetInterpretations?.length || astro.birthChartData?.planetInterpretations?.length;
+  if (!paragraphs && !planetInterp) {
+    missing.push('chart interpretation (save your astrology reading after chart generation)');
+  }
+  return { ok: missing.length === 0, missing };
+}
+
 async function enrichReportData(userId, analysis = {}, fullData = {}, user = null, bodyUserDetails = {}) {
   const insightDoc = await CareerInsight.findOne({ user: userId }).sort({ createdAt: -1 }).lean();
 
@@ -148,9 +279,37 @@ async function enrichReportData(userId, analysis = {}, fullData = {}, user = nul
         ? { ...astrologyDoc, _id: undefined, user: undefined, createdAt: undefined }
         : {}),
       ...(fullData.astrology || {}),
+      planets: astrologyDoc?.planets?.length
+        ? astrologyDoc.planets
+        : (fullData.astrology?.planets || astrologyDoc?.birthChartData?.planets),
+      houses: astrologyDoc?.houses || fullData.astrology?.houses || astrologyDoc?.birthChartData?.houses,
+      dashas: astrologyDoc?.dashas?.length
+        ? astrologyDoc.dashas
+        : (fullData.astrology?.dashas || astrologyDoc?.planetaryPeriods),
+      yogas: astrologyDoc?.yogas?.length
+        ? astrologyDoc.yogas
+        : fullData.astrology?.yogas,
+      chartSvg: astrologyDoc?.chartSvg || astrologyDoc?.birthChartData?.chartSvg || fullData.astrology?.chartSvg,
+      chartImageDataUrl:
+        astrologyDoc?.chartImageDataUrl ||
+        astrologyDoc?.birthChartData?.chartImageDataUrl ||
+        fullData.astrology?.chartImageDataUrl,
       images: mergeImageMaps(astrologyDoc?.images, fullData.astrology?.images),
     },
   };
+
+  const chartHydration = hydrateChartAnalysis(astrologyDoc);
+  if (Object.keys(chartHydration).length) {
+    enrichedFullData.astrology = {
+      ...enrichedFullData.astrology,
+      ...chartHydration,
+      birthChartData: {
+        ...(astrologyDoc?.birthChartData || {}),
+        ...(enrichedFullData.astrology.birthChartData || {}),
+        ...chartHydration,
+      },
+    };
+  }
 
   const enrichedAnalysis = {
     ...(insightDoc || {}),
@@ -179,8 +338,23 @@ async function enrichReportData(userId, analysis = {}, fullData = {}, user = nul
   if (!enrichedAnalysis.yogas?.length && astrologyDoc?.yogas?.length) {
     enrichedAnalysis.yogas = astrologyDoc.yogas;
   }
-  if (!enrichedAnalysis.astrologySummary && astrologyDoc?.careerHouseAnalysis) {
-    enrichedAnalysis.astrologySummary = astrologyDoc.careerHouseAnalysis;
+  if (!enrichedAnalysis.astrologySummary && (astrologyDoc?.careerHouseAnalysis || chartHydration.careerHouseAnalysis)) {
+    enrichedAnalysis.astrologySummary = astrologyDoc?.careerHouseAnalysis || chartHydration.careerHouseAnalysis;
+  }
+  if (!enrichedAnalysis.topCareerPaths?.length && chartHydration.careerPaths?.length) {
+    enrichedAnalysis.topCareerPaths = chartHydration.careerPaths;
+  }
+  if (!enrichedAnalysis.planets?.length && enrichedFullData.astrology?.planets?.length) {
+    enrichedAnalysis.planets = enrichedFullData.astrology.planets;
+  }
+  if (!enrichedAnalysis.remedies?.length && astrologyDoc?.remedies?.length) {
+    enrichedAnalysis.remedies = astrologyDoc.remedies;
+  }
+  if (!enrichedAnalysis.loveAnalysis && astrologyDoc?.loveAnalysis) {
+    enrichedAnalysis.loveAnalysis = astrologyDoc.loveAnalysis;
+  }
+  if (!enrichedAnalysis.healthInsights && astrologyDoc?.healthInsights) {
+    enrichedAnalysis.healthInsights = astrologyDoc.healthInsights;
   }
   if (!enrichedAnalysis.palmistrySummary && palmistryDoc) {
     enrichedAnalysis.palmistrySummary = [
@@ -440,4 +614,6 @@ module.exports = {
   collectBodyUserDetails,
   syncUserBirthDetails,
   formatGenderValue,
+  hydrateChartAnalysis,
+  validatePersonalizedReport,
 };

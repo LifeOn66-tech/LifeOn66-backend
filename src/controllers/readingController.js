@@ -24,6 +24,22 @@ exports.saveAstrologyReading = async (req, res) => {
       req.body.userDetails?.gender;
     if (gender) req.body.gender = formatGenderValue(gender) || String(gender).trim();
 
+    if (req.body.birthChartData?.chartSvg && !req.body.chartSvg) {
+      req.body.chartSvg = req.body.birthChartData.chartSvg;
+    }
+    if (req.body.birthChartData?.chartImageDataUrl && !req.body.chartImageDataUrl) {
+      req.body.chartImageDataUrl = req.body.birthChartData.chartImageDataUrl;
+    }
+    if (req.body.birthChartData?.planets?.length && !req.body.planets?.length) {
+      req.body.planets = req.body.birthChartData.planets;
+    }
+    if (req.body.birthChartData?.houses && !req.body.houses) {
+      req.body.houses = req.body.birthChartData.houses;
+    }
+    if (!req.body.dashas?.length && req.body.planetaryPeriods?.length) {
+      req.body.dashas = req.body.planetaryPeriods;
+    }
+
     const reading = await AstrologyReading.create(req.body);
 
     const birthDetails = resolveUserDetails(
@@ -38,6 +54,67 @@ exports.saveAstrologyReading = async (req, res) => {
 
     res.status(201).json({ success: true, data: reading });
   } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+};
+
+// @desc    Analyze palm images with AI vision (real palmistry)
+// @route   POST /api/readings/palmistry-analyze
+// @access  Private
+exports.analyzePalmistry = async (req, res) => {
+  try {
+    const { analyzePalm } = require('../services/palmAnalysisService');
+    const images = normalizeReadingImages(req.body.images || req.body);
+    const userContext = {
+      gender: req.body.gender,
+      name: req.user?.name,
+      hand: req.body.hand || 'both',
+    };
+
+    const analysis = await analyzePalm(images, userContext);
+
+    if (analysis.requiresAiKey) {
+      return res.status(503).json({
+        success: false,
+        code: 'AI_NOT_CONFIGURED',
+        error: 'Add OPENAI_API_KEY or GEMINI_API_KEY to backend .env for real palm image analysis.',
+        fallback: analysis,
+      });
+    }
+
+    res.status(200).json({ success: true, data: analysis, aiGenerated: true });
+  } catch (err) {
+    console.error('Palm analysis failed:', err);
+    res.status(400).json({ success: false, error: err.message });
+  }
+};
+
+// @desc    Analyze face images with AI vision (real physiognomy)
+// @route   POST /api/readings/face-analyze
+// @access  Private
+exports.analyzeFace = async (req, res) => {
+  try {
+    const { analyzeFace } = require('../services/faceAnalysisService');
+    const images = normalizeReadingImages(req.body.images || req.body);
+    const userContext = {
+      gender: req.body.gender,
+      name: req.user?.name,
+    };
+
+    const analysis = await analyzeFace(images, userContext);
+
+    if (analysis.requiresAiKey) {
+      return res.status(503).json({
+        success: false,
+        code: 'AI_NOT_CONFIGURED',
+        error: 'Add OPENAI_API_KEY or GEMINI_API_KEY to backend .env for real face image analysis.',
+        fallback: analysis,
+      });
+    }
+
+    res.status(200).json({ success: true, data: analysis, aiGenerated: true });
+  } catch (err) {
+    console.error('Face analysis failed:', err);
     res.status(400).json({ success: false, error: err.message });
   }
 };
@@ -142,36 +219,38 @@ exports.getReadings = async (req, res) => {
   }
 };
 
-// @desc    Generate astrology reading (Mock)
+// @desc    Generate personalized Vedic birth chart (North Indian)
 // @route   POST /api/readings/astrology-generate
 // @access  Public
 exports.generateAstrologyData = async (req, res) => {
   try {
-    const apiData = {
-      planets: [
-        { planet: 'Sun', sign: 'Leo', house: 10, degree: 15 },
-        { planet: 'Moon', sign: 'Cancer', house: 9, degree: 22 },
-        { planet: 'Mars', sign: 'Aries', house: 1, degree: 5 },
-        { planet: 'Mercury', sign: 'Virgo', house: 11, degree: 12 },
-        { planet: 'Jupiter', sign: 'Sagittarius', house: 2, degree: 18 },
-        { planet: 'Venus', sign: 'Taurus', house: 6, degree: 25 },
-        { planet: 'Saturn', sign: 'Capricorn', house: 3, degree: 9 },
-        { planet: 'Rahu', sign: 'Gemini', house: 8, degree: 14 },
-        { planet: 'Ketu', sign: 'Sagittarius', house: 2, degree: 14 }
-      ],
-      careerHouse: 'Strong 10th house indicating high professional status and leadership.',
-      favorablePeriods: ['2026-2028: Major expansion', '2030-2035: Peak recognition'],
-      careerRecommendations: 'Politics, Executive Management, or Entrepreneurship',
-      houses: { house_1: 'Aries', house_10: 'Capricorn' },
-      dashas: [
-        { planet: 'Jupiter', period: '2024-2040', effect: 'Expansion and wealth' }
-      ],
-      yogas: ['Gaja Kesari Yoga: Wealth and intelligence']
-    };
+    const { generateVedicChart } = require('../services/vedicChartService');
+    const chart = await generateVedicChart(req.body);
 
-    res.status(200).json(apiData);
+    res.status(200).json({
+      planets: chart.planets,
+      houses: chart.houses,
+      dashas: chart.dashas,
+      yogas: chart.yogas,
+      careerHouse: chart.careerHouseAnalysis,
+      careerRecommendations: chart.careerRecommendations,
+      favorablePeriods: chart.favorablePeriods,
+      ascendant: chart.ascendant,
+      lagna: chart.lagna,
+      nakshatra: chart.nakshatra,
+      pada: chart.pada,
+      chartSvg: chart.chartSvg,
+      chartImageDataUrl: chart.chartImageDataUrl,
+      birthChartData: chart.birthChartData,
+      analysisParagraphs: chart.analysisParagraphs,
+      careerPaths: chart.careerPaths,
+      planetInterpretations: chart.planetInterpretations,
+      aiEnhanced: chart.aiEnhanced,
+      analysisSource: chart.analysisSource,
+    });
   } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
+    console.error('Vedic chart generation failed:', err);
+    res.status(400).json({ success: false, error: err.message || 'Failed to generate birth chart.' });
   }
 };
 

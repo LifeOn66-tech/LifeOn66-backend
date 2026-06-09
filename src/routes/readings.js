@@ -7,6 +7,8 @@ const {
   getCareerInsight,
   getReadings,
   generateAstrologyData,
+  analyzePalmistry,
+  analyzeFace,
 } = require('../controllers/readingController');
 
 const router = express.Router();
@@ -19,7 +21,9 @@ router.use(protect);
 
 router.get('/', getReadings);
 router.post('/astrology', saveAstrologyReading);
+router.post('/palmistry-analyze', analyzePalmistry);
 router.post('/palmistry', savePalmistryReading);
+router.post('/face-analyze', analyzeFace);
 router.post('/face', saveFaceReading);
 router.post('/insight', saveCareerInsight);
 router.get('/insight', getCareerInsight);

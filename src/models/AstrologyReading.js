@@ -7,6 +7,12 @@ const AstrologyReadingSchema = new mongoose.Schema({
     required: true
   },
   birthChartData: mongoose.Schema.Types.Mixed,
+  planets: [mongoose.Schema.Types.Mixed],
+  houses: mongoose.Schema.Types.Mixed,
+  dashas: [mongoose.Schema.Types.Mixed],
+  yogas: [mongoose.Schema.Types.Mixed],
+  chartSvg: String,
+  chartImageDataUrl: String,
   gender: String,
   dateOfBirth: String,
   timeOfBirth: String,

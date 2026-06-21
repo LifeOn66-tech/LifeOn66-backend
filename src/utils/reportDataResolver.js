@@ -9,6 +9,7 @@ const {
   normalizeToDataUrl,
   extractImagesFromReadingDoc,
 } = require('./imageResolver');
+const { applyCareerInsightWordLimits } = require('../config/readingWordLimits');
 
 function hasValidImages(images = {}) {
   return Object.values(images || {}).some((v) => isUsableImageSrc(v));
@@ -101,7 +102,7 @@ async function getOrBuildCareerInsight(userId) {
 
       if (aiSynthesis) {
         return {
-          data: {
+          data: applyCareerInsightWordLimits({
             astrologyReadingId: astrologyDoc?._id,
             palmistryReadingId: palmistryDoc?._id,
             faceReadingId: faceDoc?._id,
@@ -114,7 +115,7 @@ async function getOrBuildCareerInsight(userId) {
             sixMonthPathway: aiSynthesis.sixMonthPathway || [],
             threeYearPathway: aiSynthesis.threeYearPathway || [],
             aiGenerated: true,
-          },
+          }),
           synthesized: true,
         };
       }
@@ -133,7 +134,7 @@ async function getOrBuildCareerInsight(userId) {
   const astroPaths = astrologyDoc?.birthChartData?.careerPaths || astrologyDoc?.careerPaths;
 
   return {
-    data: {
+    data: applyCareerInsightWordLimits({
       astrologyReadingId: astrologyDoc?._id,
       palmistryReadingId: palmistryDoc?._id,
       faceReadingId: faceDoc?._id,
@@ -148,7 +149,7 @@ async function getOrBuildCareerInsight(userId) {
       bestTiming: astrologyDoc?.favorablePeriods,
       sixMonthPathway: [],
       threeYearPathway: [],
-    },
+    }),
     synthesized: true,
   };
 }
@@ -297,7 +298,7 @@ async function ensureAstrologyChartData(astrology = {}, userDetails = {}, astrol
 
   try {
     const { generateVedicChart } = require('../services/vedicChartService');
-    const chart = await generateVedicChart(chartInput);
+    const chart = await generateVedicChart(chartInput, { skipAi: true });
     const generated = chartPayloadToAstrology(chart);
 
     if (astrologyDoc?._id && !hasChartPlanets(astrologyDoc)) {

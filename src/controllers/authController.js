@@ -1,6 +1,15 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const { verifyGoogleIdToken } = require('../utils/googleAuth');
+const {
+  verifyGoogleIdToken,
+  upsertGoogleUser,
+  isGoogleOAuthConfigured,
+  resolveFrontendOrigin,
+  buildGoogleAuthUrl,
+  createGoogleOAuthState,
+  verifyGoogleOAuthState,
+  exchangeGoogleCode,
+} = require('../utils/googleAuth');
 
 function formatUserResponse(user) {
   return {
@@ -97,7 +106,62 @@ exports.login = async (req, res) => {
   }
 };
 
-// @desc    Google OAuth login / sign-up
+// @desc    Start Google OAuth redirect (avoids frontend origin restrictions)
+// @route   GET /api/auth/google/start
+// @access  Public
+exports.googleOAuthStart = (req, res) => {
+  try {
+    if (!isGoogleOAuthConfigured()) {
+      const frontendOrigin = resolveFrontendOrigin(req);
+      return res.redirect(`${frontendOrigin}/login?error=google_not_configured`);
+    }
+
+    const frontendOrigin = resolveFrontendOrigin(req);
+    const state = createGoogleOAuthState(frontendOrigin);
+    res.redirect(buildGoogleAuthUrl(req, state));
+  } catch (err) {
+    console.error('[Auth] Google OAuth start error:', err.message);
+    const frontendOrigin = resolveFrontendOrigin(req);
+    res.redirect(`${frontendOrigin}/login?error=google_failed`);
+  }
+};
+
+// @desc    Google OAuth callback — issues JWT and redirects to frontend
+// @route   GET /api/auth/google/callback
+// @access  Public
+exports.googleOAuthCallback = async (req, res) => {
+  let frontendOrigin = resolveFrontendOrigin(req);
+
+  try {
+    const { code, state, error } = req.query;
+
+    if (state) {
+      const decoded = verifyGoogleOAuthState(state);
+      frontendOrigin = decoded.frontendOrigin;
+    }
+
+    if (error) {
+      return res.redirect(`${frontendOrigin}/login?error=google_denied`);
+    }
+
+    if (!code) {
+      return res.redirect(`${frontendOrigin}/login?error=google_no_code`);
+    }
+
+    const payload = await exchangeGoogleCode(req, code);
+    const user = await upsertGoogleUser(User, payload);
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '30d' });
+
+    const redirectUrl = new URL('/auth/google/callback', `${frontendOrigin}/`);
+    redirectUrl.searchParams.set('token', token);
+    return res.redirect(redirectUrl.toString());
+  } catch (err) {
+    console.error('[Auth] Google OAuth callback error:', err.message);
+    return res.redirect(`${frontendOrigin}/login?error=google_failed`);
+  }
+};
+
+// @desc    Google OAuth login / sign-up (GIS credential token)
 // @route   POST /api/auth/google
 // @access  Public
 exports.googleLogin = async (req, res) => {
@@ -112,40 +176,7 @@ exports.googleLogin = async (req, res) => {
     }
 
     const payload = await verifyGoogleIdToken(idToken);
-    const email = payload.email.toLowerCase().trim();
-    const googleId = payload.sub;
-    const fullName = payload.name || payload.given_name || email.split('@')[0];
-    const avatar = payload.picture || '';
-
-    let user = await User.findOne({ googleId });
-
-    if (!user) {
-      user = await User.findOne({ email });
-
-      if (user) {
-        user.googleId = googleId;
-        if (!user.fullName && fullName) user.fullName = fullName;
-        if (!user.avatar && avatar) user.avatar = avatar;
-        if (user.authProvider === 'local' && !user.password) {
-          user.authProvider = 'google';
-        }
-        await user.save();
-      } else {
-        user = await User.create({
-          email,
-          googleId,
-          fullName,
-          avatar,
-          authProvider: 'google',
-          password: User.generateRandomPassword(),
-        });
-      }
-    } else {
-      if (!user.fullName && fullName) user.fullName = fullName;
-      if (avatar) user.avatar = avatar;
-      await user.save();
-    }
-
+    const user = await upsertGoogleUser(User, payload);
     sendTokenResponse(user, 200, res);
   } catch (err) {
     console.error('[Auth] Google login error:', err.message);
@@ -156,6 +187,18 @@ exports.googleLogin = async (req, res) => {
         : 'Google sign-in failed. Please try again.',
     });
   }
+};
+
+// @desc    Public auth config for the frontend
+// @route   GET /api/auth/config
+// @access  Public
+exports.getAuthConfig = (req, res) => {
+  const apiBase = `${req.protocol}://${req.get('host')}`;
+  res.status(200).json({
+    success: true,
+    googleOAuthEnabled: isGoogleOAuthConfigured(),
+    googleOAuthStartUrl: `${apiBase}/api/auth/google/start?frontend_url=${encodeURIComponent(resolveFrontendOrigin(req))}`,
+  });
 };
 
 // @desc    Get current logged in user

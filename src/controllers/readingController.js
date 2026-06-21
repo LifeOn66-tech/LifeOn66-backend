@@ -84,30 +84,36 @@ exports.saveAstrologyReading = async (req, res) => {
 // @route   POST /api/readings/palmistry-analyze
 // @access  Private
 exports.analyzePalmistry = async (req, res) => {
+  const images = normalizeReadingImages(req.body.images || req.body);
+  const userContext = {
+    gender: req.body.gender,
+    name: req.user?.name,
+    hand: req.body.hand || 'both',
+  };
+
   try {
     const { analyzePalm } = require('../services/palmAnalysisService');
-    const images = normalizeReadingImages(req.body.images || req.body);
-    const userContext = {
-      gender: req.body.gender,
-      name: req.user?.name,
-      hand: req.body.hand || 'both',
-    };
-
     const analysis = await analyzePalm(images, userContext);
 
-    if (analysis.requiresAiKey) {
-      return res.status(503).json({
-        success: false,
-        code: 'AI_NOT_CONFIGURED',
-        error: 'Add OPENAI_API_KEY or GEMINI_API_KEY to backend .env for real palm image analysis.',
-        fallback: analysis,
-      });
-    }
-
-    res.status(200).json({ success: true, data: analysis, aiGenerated: true });
+    res.status(200).json({
+      success: true,
+      data: analysis,
+      aiGenerated: Boolean(analysis.aiGenerated),
+      degraded: Boolean(analysis.degraded),
+      fallbackReason: analysis.fallbackReason || null,
+    });
   } catch (err) {
     console.error('Palm analysis failed:', err);
-    res.status(400).json({ success: false, error: err.message });
+    const { buildPalmRuleBasedFallback } = require('../services/ruleBasedReadingFallback');
+    const fallback = buildPalmRuleBasedFallback(images, userContext);
+    res.status(200).json({
+      success: true,
+      data: fallback,
+      aiGenerated: false,
+      degraded: true,
+      fallbackReason: 'error',
+      warning: err.message,
+    });
   }
 };
 
@@ -115,29 +121,35 @@ exports.analyzePalmistry = async (req, res) => {
 // @route   POST /api/readings/face-analyze
 // @access  Private
 exports.analyzeFace = async (req, res) => {
+  const images = normalizeReadingImages(req.body.images || req.body);
+  const userContext = {
+    gender: req.body.gender,
+    name: req.user?.name,
+  };
+
   try {
     const { analyzeFace } = require('../services/faceAnalysisService');
-    const images = normalizeReadingImages(req.body.images || req.body);
-    const userContext = {
-      gender: req.body.gender,
-      name: req.user?.name,
-    };
-
     const analysis = await analyzeFace(images, userContext);
 
-    if (analysis.requiresAiKey) {
-      return res.status(503).json({
-        success: false,
-        code: 'AI_NOT_CONFIGURED',
-        error: 'Add OPENAI_API_KEY or GEMINI_API_KEY to backend .env for real face image analysis.',
-        fallback: analysis,
-      });
-    }
-
-    res.status(200).json({ success: true, data: analysis, aiGenerated: true });
+    res.status(200).json({
+      success: true,
+      data: analysis,
+      aiGenerated: Boolean(analysis.aiGenerated),
+      degraded: Boolean(analysis.degraded),
+      fallbackReason: analysis.fallbackReason || null,
+    });
   } catch (err) {
     console.error('Face analysis failed:', err);
-    res.status(400).json({ success: false, error: err.message });
+    const { buildFaceRuleBasedFallback } = require('../services/ruleBasedReadingFallback');
+    const fallback = buildFaceRuleBasedFallback(images, userContext);
+    res.status(200).json({
+      success: true,
+      data: fallback,
+      aiGenerated: false,
+      degraded: true,
+      fallbackReason: 'error',
+      warning: err.message,
+    });
   }
 };
 

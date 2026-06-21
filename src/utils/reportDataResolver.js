@@ -172,8 +172,92 @@ function hasChartInterpretation(astro = {}) {
     bcd.analysisParagraphs?.length ||
     bcd.planetInterpretations?.length ||
     astro.careerHouseAnalysis ||
-    bcd.careerHouseAnalysis
+    bcd.careerHouseAnalysis ||
+    astro.careerRecommendations ||
+    bcd.careerRecommendations
   );
+}
+
+function pickNonemptyValue(...values) {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length > 0) return value;
+    if (value != null && value !== '') return value;
+  }
+  return null;
+}
+
+function mergeAstrologyFromSources(astrologyDoc, clientAstrology = {}) {
+  const doc = astrologyDoc
+    ? { ...astrologyDoc, _id: undefined, user: undefined, createdAt: undefined }
+    : {};
+  const client = clientAstrology && typeof clientAstrology === 'object' ? clientAstrology : {};
+  const docBcd = doc.birthChartData || {};
+  const clientBcd = client.birthChartData || {};
+
+  const planets = pickNonemptyValue(
+    doc.planets,
+    client.planets,
+    docBcd.planets,
+    clientBcd.planets
+  );
+
+  const birthChartData = {
+    ...docBcd,
+    ...clientBcd,
+    ...(Array.isArray(planets) && planets.length ? { planets } : {}),
+  };
+
+  return {
+    ...doc,
+    ...client,
+    birthChartData,
+    planets: planets || [],
+    houses: pickNonemptyValue(doc.houses, client.houses, docBcd.houses, clientBcd.houses),
+    dashas: pickNonemptyValue(doc.dashas, client.dashas, doc.planetaryPeriods, client.planetaryPeriods, docBcd.dashas),
+    yogas: pickNonemptyValue(doc.yogas, client.yogas, docBcd.yogas, clientBcd.yogas),
+    chartSvg: pickNonemptyValue(doc.chartSvg, client.chartSvg, docBcd.chartSvg, clientBcd.chartSvg),
+    chartImageDataUrl: pickNonemptyValue(
+      doc.chartImageDataUrl,
+      client.chartImageDataUrl,
+      docBcd.chartImageDataUrl,
+      clientBcd.chartImageDataUrl
+    ),
+    ascendant: pickNonemptyValue(doc.ascendant, client.ascendant, docBcd.lagnaSign, clientBcd.lagnaSign),
+    lagna: pickNonemptyValue(doc.lagna, client.lagna, doc.ascendant, client.ascendant),
+    nakshatra: pickNonemptyValue(doc.nakshatra, client.nakshatra, docBcd.nakshatra, clientBcd.nakshatra),
+    analysisParagraphs: pickNonemptyValue(
+      doc.analysisParagraphs,
+      client.analysisParagraphs,
+      docBcd.analysisParagraphs,
+      clientBcd.analysisParagraphs
+    ),
+    planetInterpretations: pickNonemptyValue(
+      doc.planetInterpretations,
+      client.planetInterpretations,
+      docBcd.planetInterpretations,
+      clientBcd.planetInterpretations
+    ),
+    careerHouseAnalysis: pickNonemptyValue(
+      doc.careerHouseAnalysis,
+      client.careerHouseAnalysis,
+      docBcd.careerHouseAnalysis,
+      clientBcd.careerHouseAnalysis
+    ),
+    careerRecommendations: pickNonemptyValue(
+      doc.careerRecommendations,
+      client.careerRecommendations,
+      docBcd.careerRecommendations,
+      clientBcd.careerRecommendations
+    ),
+    careerPaths: pickNonemptyValue(doc.careerPaths, client.careerPaths, docBcd.careerPaths, clientBcd.careerPaths),
+    favorablePeriods: pickNonemptyValue(
+      doc.favorablePeriods,
+      client.favorablePeriods,
+      docBcd.favorablePeriods,
+      clientBcd.favorablePeriods
+    ),
+    images: mergeImageMaps(doc.images, client.images),
+  };
 }
 
 function parseDateParts(dateStr) {
@@ -185,6 +269,8 @@ function parseDateParts(dateStr) {
     if (day && month && year) return { day, month, year };
   }
   const trimmed = String(dateStr).trim();
+  const iso = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return { day: Number(iso[3]), month: Number(iso[2]), year: Number(iso[1]) };
   const parsed = new Date(trimmed);
   if (!Number.isNaN(parsed.getTime())) {
     return { day: parsed.getDate(), month: parsed.getMonth() + 1, year: parsed.getFullYear() };
@@ -212,9 +298,9 @@ function parseTimeParts(timeStr) {
   return { hour, minute };
 }
 
-function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyUserDetails = {}) {
+function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyUserDetails = {}, user = null) {
   const bcd = astrologyDoc?.birthChartData || {};
-  const birthInput = bcd.birthInput || {};
+  const birthInput = bcd.birthInput || bcd.birthDetails || {};
   const coords = bcd.coordinates || {};
 
   const dateParts =
@@ -225,7 +311,8 @@ function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyU
     ) ||
     parseDateParts(bodyUserDetails.dateOfBirth) ||
     parseDateParts(userDetails.dateOfBirth) ||
-    parseDateParts(astrologyDoc?.dateOfBirth);
+    parseDateParts(astrologyDoc?.dateOfBirth) ||
+    parseDateParts(user?.dateOfBirth);
 
   if (!dateParts) return null;
 
@@ -237,13 +324,15 @@ function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyU
     ) ||
     parseTimeParts(bodyUserDetails.timeOfBirth) ||
     parseTimeParts(userDetails.timeOfBirth) ||
-    parseTimeParts(astrologyDoc?.timeOfBirth);
+    parseTimeParts(astrologyDoc?.timeOfBirth) ||
+    parseTimeParts(user?.timeOfBirth);
 
   const place =
     birthInput.place ||
     bodyUserDetails.placeOfBirth ||
     userDetails.placeOfBirth ||
     astrologyDoc?.placeOfBirth ||
+    user?.placeOfBirth ||
     null;
 
   const gender =
@@ -251,6 +340,7 @@ function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyU
     bodyUserDetails.gender ||
     userDetails.gender ||
     astrologyDoc?.gender ||
+    user?.gender ||
     null;
 
   return {
@@ -288,12 +378,18 @@ function chartPayloadToAstrology(chart) {
   };
 }
 
-async function ensureAstrologyChartData(astrology = {}, userDetails = {}, astrologyDoc = null, bodyUserDetails = {}) {
+async function ensureAstrologyChartData(
+  astrology = {},
+  userDetails = {},
+  astrologyDoc = null,
+  bodyUserDetails = {},
+  user = null
+) {
   if (hasChartPlanets(astrology)) {
     return astrology;
   }
 
-  const chartInput = buildChartInputFromSources(userDetails, astrologyDoc, bodyUserDetails);
+  const chartInput = buildChartInputFromSources(userDetails, astrologyDoc, bodyUserDetails, user);
   if (!chartInput) return astrology;
 
   try {
@@ -366,11 +462,19 @@ function hydrateChartAnalysis(astrologyDoc) {
     const ref = planets.find((p) => p.signIndex != null && p.house != null);
     if (ref) lagnaSignIndex = (ref.signIndex - (ref.house - 1) + 12) % 12;
   }
+  if (lagnaSignIndex == null || lagnaSignIndex < 0) {
+    const ref = planets.find((p) => p.sign && p.house != null);
+    if (ref) {
+      const signIndex = SIGN_NAMES.findIndex((s) => s.toLowerCase() === String(ref.sign).toLowerCase());
+      if (signIndex >= 0) lagnaSignIndex = (signIndex - (ref.house - 1) + 12) % 12;
+    }
+  }
   if (lagnaSignIndex == null || lagnaSignIndex < 0) return {};
 
   const existingParagraphs = bcd.analysisParagraphs || astrologyDoc.analysisParagraphs;
   const existingPlanetInterp = bcd.planetInterpretations || astrologyDoc.planetInterpretations;
-  if (existingParagraphs?.length && existingPlanetInterp?.length) return {};
+  const existingCareerAnalysis = astrologyDoc.careerHouseAnalysis || bcd.careerHouseAnalysis;
+  if (existingParagraphs?.length && existingPlanetInterp?.length && existingCareerAnalysis) return {};
 
   const dashas = astrologyDoc.dashas?.length
     ? astrologyDoc.dashas
@@ -405,8 +509,38 @@ function hydrateChartAnalysis(astrologyDoc) {
   };
 }
 
+function applyChartHydration(astrology = {}, astrologyDoc = null) {
+  const chartHydration = hydrateChartAnalysis({
+    ...(astrologyDoc || {}),
+    ...astrology,
+    birthChartData: {
+      ...(astrologyDoc?.birthChartData || {}),
+      ...(astrology.birthChartData || {}),
+    },
+  });
+
+  if (!Object.keys(chartHydration).length) {
+    return astrology;
+  }
+
+  return {
+    ...astrology,
+    ...chartHydration,
+    birthChartData: {
+      ...(astrologyDoc?.birthChartData || {}),
+      ...(astrology.birthChartData || {}),
+      ...chartHydration,
+    },
+  };
+}
+
 function validatePersonalizedReport(enriched) {
-  const astro = enriched.fullData?.astrology || {};
+  let astro = enriched.fullData?.astrology || {};
+  if (hasChartPlanets(astro) && !hasChartInterpretation(astro)) {
+    astro = applyChartHydration(astro);
+    enriched.fullData.astrology = astro;
+  }
+
   const missing = [];
   if (!hasChartPlanets(astro)) {
     missing.push('calculated birth chart (complete astrology reading or save birth date/time/place on profile)');
@@ -464,28 +598,7 @@ async function enrichReportData(userId, analysis = {}, fullData = {}, user = nul
       ...(fullData.face || {}),
       images: faceImages,
     },
-    astrology: {
-      ...(astrologyDoc
-        ? { ...astrologyDoc, _id: undefined, user: undefined, createdAt: undefined }
-        : {}),
-      ...(fullData.astrology || {}),
-      planets: astrologyDoc?.planets?.length
-        ? astrologyDoc.planets
-        : (fullData.astrology?.planets || astrologyDoc?.birthChartData?.planets),
-      houses: astrologyDoc?.houses || fullData.astrology?.houses || astrologyDoc?.birthChartData?.houses,
-      dashas: astrologyDoc?.dashas?.length
-        ? astrologyDoc.dashas
-        : (fullData.astrology?.dashas || astrologyDoc?.planetaryPeriods),
-      yogas: astrologyDoc?.yogas?.length
-        ? astrologyDoc.yogas
-        : fullData.astrology?.yogas,
-      chartSvg: astrologyDoc?.chartSvg || astrologyDoc?.birthChartData?.chartSvg || fullData.astrology?.chartSvg,
-      chartImageDataUrl:
-        astrologyDoc?.chartImageDataUrl ||
-        astrologyDoc?.birthChartData?.chartImageDataUrl ||
-        fullData.astrology?.chartImageDataUrl,
-      images: mergeImageMaps(astrologyDoc?.images, fullData.astrology?.images),
-    },
+    astrology: mergeAstrologyFromSources(astrologyDoc, fullData.astrology),
   };
 
   const preliminaryUserDetails = resolveUserDetails(
@@ -501,28 +614,11 @@ async function enrichReportData(userId, analysis = {}, fullData = {}, user = nul
     enrichedFullData.astrology,
     preliminaryUserDetails,
     astrologyDoc,
-    bodyUserDetails
+    bodyUserDetails,
+    user
   );
 
-  const chartHydration = hydrateChartAnalysis({
-    ...(astrologyDoc || {}),
-    ...enrichedFullData.astrology,
-    birthChartData: {
-      ...(astrologyDoc?.birthChartData || {}),
-      ...(enrichedFullData.astrology.birthChartData || {}),
-    },
-  });
-  if (Object.keys(chartHydration).length) {
-    enrichedFullData.astrology = {
-      ...enrichedFullData.astrology,
-      ...chartHydration,
-      birthChartData: {
-        ...(astrologyDoc?.birthChartData || {}),
-        ...(enrichedFullData.astrology.birthChartData || {}),
-        ...chartHydration,
-      },
-    };
-  }
+  enrichedFullData.astrology = applyChartHydration(enrichedFullData.astrology, astrologyDoc);
 
   const enrichedAnalysis = {
     ...(insightDoc || {}),
@@ -551,11 +647,11 @@ async function enrichReportData(userId, analysis = {}, fullData = {}, user = nul
   if (!enrichedAnalysis.yogas?.length && astrologyDoc?.yogas?.length) {
     enrichedAnalysis.yogas = astrologyDoc.yogas;
   }
-  if (!enrichedAnalysis.astrologySummary && (astrologyDoc?.careerHouseAnalysis || chartHydration.careerHouseAnalysis)) {
-    enrichedAnalysis.astrologySummary = astrologyDoc?.careerHouseAnalysis || chartHydration.careerHouseAnalysis;
+  if (!enrichedAnalysis.astrologySummary && (astrologyDoc?.careerHouseAnalysis || enrichedFullData.astrology?.careerHouseAnalysis)) {
+    enrichedAnalysis.astrologySummary = astrologyDoc?.careerHouseAnalysis || enrichedFullData.astrology?.careerHouseAnalysis;
   }
-  if (!enrichedAnalysis.topCareerPaths?.length && chartHydration.careerPaths?.length) {
-    enrichedAnalysis.topCareerPaths = chartHydration.careerPaths;
+  if (!enrichedAnalysis.topCareerPaths?.length && enrichedFullData.astrology?.careerPaths?.length) {
+    enrichedAnalysis.topCareerPaths = enrichedFullData.astrology.careerPaths;
   }
   if (!enrichedAnalysis.planets?.length && enrichedFullData.astrology?.planets?.length) {
     enrichedAnalysis.planets = enrichedFullData.astrology.planets;

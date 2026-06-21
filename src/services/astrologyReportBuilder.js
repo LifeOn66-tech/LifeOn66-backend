@@ -81,12 +81,7 @@ function imageFigure(src, label, analysis, tier, variant = 'default') {
   }
   const safeSrc = src.replace(/"/g, '&quot;');
   const frameClass = variant === 'face' ? 'img-frame face-frame' : variant === 'palm' ? 'img-frame palm-frame' : variant === 'gallery' ? 'img-frame gallery-frame' : 'img-frame';
-  const detail = pickTierText(
-    tier,
-    analysis?.slice?.(0, 280) || 'Visual markers indicate distinctive energetic patterns relevant to your life path.',
-    analysis?.slice?.(0, 520) || 'Detailed analysis reveals nuanced behavioral tendencies and long-term career inclinations from your uploaded image.',
-    analysis || 'Advanced analysis of line depth, mount prominence, and structural balance suggests leadership capacity and strategic foresight.'
-  );
+  const detail = analysis || '';
   return `
     <figure class="img-figure ${variant !== 'default' ? `img-figure-${variant}` : ''}">
       <div class="${frameClass}">
@@ -212,9 +207,37 @@ function getHouseBadge(houseNum, sign, planets = []) {
   if (sign) return sign;
   const inHouse = planets.filter((p) => Number(p.house) === houseNum).map((p) => p.planet);
   if (inHouse.length) return inHouse.join(', ');
-  const short = HOUSE_SHORT[houseNum];
-  if (short) return short.split(',')[0].trim();
   return `House ${houseNum}`;
+}
+
+function getPlanetInterpretations(astro) {
+  return astro.birthChartData?.planetInterpretations || astro.planetInterpretations || [];
+}
+
+function getDashaAnalysisLines(astro) {
+  return astro.birthChartData?.dashaAnalysis || astro.dashaAnalysis || [];
+}
+
+function missingSectionNote(label) {
+  return `<p class="note">No ${label} available — complete your personalized reading session to populate this section from your birth chart.</p>`;
+}
+
+function formatConfidence(score) {
+  return score != null ? `${score}%` : '—';
+}
+
+function collectFaceScores(face, traits) {
+  const scores = [];
+  if (face.leadershipScore != null || traits.leadershipScore != null) {
+    scores.push({ label: 'Leadership', value: face.leadershipScore ?? traits.leadershipScore });
+  }
+  if (face.teamworkScore != null || traits.teamworkScore != null) {
+    scores.push({ label: 'Teamwork', value: face.teamworkScore ?? traits.teamworkScore });
+  }
+  if (face.independenceScore != null || traits.independenceScore != null) {
+    scores.push({ label: 'Independence', value: face.independenceScore ?? traits.independenceScore });
+  }
+  return scores;
 }
 
 function buildContent(analysis = {}, fullData = {}, tier, userName, userDetails = {}) {
@@ -223,9 +246,7 @@ function buildContent(analysis = {}, fullData = {}, tier, userName, userDetails 
   const astro = fullData.astrology || analysis.astrology || {};
   const traits = typeof face.personalityTraits === 'object' ? face.personalityTraits : {};
 
-  const strengths = analysis.strengthsSummary || analysis.strengths || traits.strengths || [
-    'Strategic foresight', 'Leadership presence', 'Analytical depth', 'Resilience', 'Communication clarity',
-  ];
+  const strengths = analysis.strengthsSummary || analysis.strengths || traits.strengths || [];
 
   const dashas = normalizeDashas(astro, analysis);
   const planets = normalizePlanets(astro, analysis);
@@ -245,12 +266,12 @@ function buildContent(analysis = {}, fullData = {}, tier, userName, userDetails 
     love: analysis.loveAnalysis || analysis.relationshipInsights || traits.relationships,
     health: analysis.healthInsights || analysis.healthSummary || traits.health,
     strengths,
-    challenges: analysis.developmentAreas || analysis.challenges || traits.challenges || ['Delegation', 'Patience', 'Work-life balance'],
+    challenges: analysis.developmentAreas || analysis.challenges || traits.challenges || [],
     careers: analysis.topCareerPaths || analysis.careerPaths || [],
     future: favorablePeriods,
     remedies: analysis.remedies || analysis.actionItems,
     conclusion: analysis.synthesizedRecommendation || analysis.finalSummary,
-    confidence: analysis.confidenceScore || palm.confidenceScore || face.confidenceScore || 91,
+    confidence: analysis.confidenceScore || palm.confidenceScore || face.confidenceScore || null,
     sixMonth: analysis.sixMonthPathway || [],
     threeYear: analysis.threeYearPathway || [],
     dashas,
@@ -260,16 +281,60 @@ function buildContent(analysis = {}, fullData = {}, tier, userName, userDetails 
   };
 }
 
+function getChartImageSrc(astro) {
+  return astro.chartImageDataUrl || astro.birthChartData?.chartImageDataUrl || null;
+}
+
+function buildBirthChartPage(astro, userName, userDetails = {}) {
+  const chartSrc = getChartImageSrc(astro);
+  const lagna = astro.birthChartData?.lagnaSign || astro.ascendant || astro.lagna || '—';
+  const nakshatra = astro.birthChartData?.nakshatra || astro.nakshatra || '—';
+  const pada = astro.birthChartData?.nakshatraPada || astro.pada || '—';
+  const ayanamsa = astro.birthChartData?.ayanamsa || 'Lahiri';
+  const chartBlock = chartSrc
+    ? `<div class="birth-chart-frame"><img src="${chartSrc.replace(/"/g, '&quot;')}" alt="North Indian Vedic Birth Chart" class="birth-chart-img" /></div>`
+    : '<p class="note">Birth chart image unavailable — complete your astrology reading to generate your personalized Lagna Kundali.</p>';
+
+  const planetRows = (astro.planets || astro.birthChartData?.planets || [])
+    .map((p) => `<tr><td>${p.planet || p.name}</td><td>${p.sign || '—'}</td><td>${p.house ? `House ${p.house}` : '—'}</td><td>${p.degree != null ? `${p.degree}°` : '—'}</td><td>${[p.retrograde ? 'Vakri' : '', p.exalted ? 'Uchcha' : '', p.debilitated ? 'Neecha' : '', p.combust ? 'Asta' : ''].filter(Boolean).join(', ') || '—'}</td></tr>`)
+    .join('');
+
+  return `
+    ${sectionHeader('North Indian Birth Chart — Lagna Kundali')}
+    <div class="content-card birth-chart-page">
+      <p class="section-intro">Personalized Vedic birth chart for <strong>${userName}</strong>${userDetailsLabel(userDetails)} — calculated using ${ayanamsa} Ayanamsa (Whole Sign houses).</p>
+      <div class="chart-meta-row">
+        <span class="chart-meta-pill"><strong>Lagna:</strong> ${lagna}</span>
+        <span class="chart-meta-pill"><strong>Nakshatra:</strong> ${nakshatra} (Pada ${pada})</span>
+        <span class="chart-meta-pill"><strong>Style:</strong> North Indian</span>
+      </div>
+      ${chartBlock}
+      ${planetRows ? `<p class="panel-title" style="margin-top:14px">Planetary Positions (Graha Spast)</p>
+      <table class="pro-data-table chart-planet-table">
+        <tr><th>Planet</th><th>Sign</th><th>House</th><th>Degree</th><th>Status</th></tr>
+        ${planetRows}
+      </table>` : ''}
+      <p class="note" style="margin-top:10px">* Vakri = Retrograde · ↑ Uchcha = Exalted · ↓ Neecha = Debilitated · ^ Asta = Combust</p>
+    </div>`;
+}
+
 function buildAstrologyParagraphs(astro, dashas, planets, yogas, periods, analysis) {
   const parts = [];
+  const savedAnalysis = astro.birthChartData?.analysisParagraphs || astro.analysisParagraphs;
+  if (Array.isArray(savedAnalysis) && savedAnalysis.length) {
+    parts.push(...savedAnalysis);
+  }
   if (astro.careerHouseAnalysis) parts.push(astro.careerHouseAnalysis);
   if (astro.birthChartData?.nakshatra) {
     const pada = astro.birthChartData.pada ? ` (Pada ${astro.birthChartData.pada})` : '';
     parts.push(`${astro.birthChartData.nakshatra}${pada} shapes your core temperament, decision style, and long-term ambition.`);
   }
-  if (dashas.length) {
+  const dashaAnalysis = getDashaAnalysisLines(astro);
+  if (dashaAnalysis.length) {
+    parts.push(...dashaAnalysis.slice(0, 3));
+  } else if (dashas.length && dashas[0].effect) {
     const d = dashas[0];
-    parts.push(`Current ${d.planet || 'planetary'} period${d.period ? ` (${d.period})` : ''}: ${d.effect || 'disciplined growth with powerful long-term results.'}`);
+    parts.push(`Current ${d.planet} period${d.period ? ` (${d.period})` : ''}: ${d.effect}`);
   }
   if (planets.length) {
     parts.push(`Key chart placements: ${planets.slice(0, 6).map((p) => `${p.planet || p.name || 'Planet'} in ${p.sign || '—'}${p.house ? ` (House ${p.house})` : ''}`).join(', ')}.`);
@@ -278,7 +343,6 @@ function buildAstrologyParagraphs(astro, dashas, planets, yogas, periods, analys
   if (periods.length) parts.push(`Favorable windows: ${periods.map((p) => (typeof p === 'string' ? p : `${p.period || p.year}: ${p.focus || p.milestone || ''}`)).join('; ')}.`);
   if (astro.careerRecommendations) parts.push(`Career direction favors ${astro.careerRecommendations.toLowerCase()}.`);
   if (analysis.astrologySummary) parts.push(analysis.astrologySummary);
-  if (!parts.length) parts.push('Your birth chart emphasizes career houses, sustained professional growth, and leadership potential through disciplined effort.');
   return parts;
 }
 
@@ -294,11 +358,6 @@ function buildPalmParagraphs(hand, palm, analysis) {
     if (palm.careerRecommendations) parts.push(palm.careerRecommendations);
   }
   if (analysis.palmistrySummary) parts.push(analysis.palmistrySummary);
-  if (!parts.length) {
-    parts.push(hand === 'left'
-      ? 'Long head line indicates strong analytical and creative intelligence. Weaker early fate line suggests self-made success through persistence.'
-      : 'Strengthening fate line indicates improving career clarity and stability with long-term recognition.');
-  }
   return parts;
 }
 
@@ -308,11 +367,12 @@ function buildFaceParagraphs(view, face, traits, analysis) {
     if (traits.overview) parts.push(traits.overview);
     if (face.careerRecommendations) parts.push(face.careerRecommendations);
     if (analysis.faceSummary) parts.push(analysis.faceSummary);
-    if (!parts.length) parts.push('Balanced facial symmetry reflects logical thinking combined with emotional control and leadership presence.');
   } else if (view === 'right') {
-    parts.push(traits.rightProfile || traits.decisionMaking || 'Stable decision-making and a practical, results-oriented mindset.');
+    if (traits.rightProfile) parts.push(traits.rightProfile);
+    if (traits.decisionMaking) parts.push(traits.decisionMaking);
   } else {
-    parts.push(traits.leftProfile || traits.patience || 'Consistent growth pattern driven by patience, discipline, and steady effort.');
+    if (traits.leftProfile) parts.push(traits.leftProfile);
+    if (traits.patience) parts.push(traits.patience);
   }
   if (traits.summary && view === 'front') parts.push(traits.summary);
   return parts;
@@ -361,7 +421,7 @@ function premiumImageAnalysisPage(title, src, paragraphs, variant = 'palm') {
     ${sectionHeader(title)}
     <div class="content-card premium-image-page">
       ${imageBlock}
-      <div class="analysis-text">${text}</div>
+      <div class="analysis-text">${text || missingSectionNote(title)}</div>
     </div>`;
 }
 
@@ -385,25 +445,20 @@ function analysisPage(title, src, paragraphs, variant = 'palm') {
 function careerBlueprintInner(c) {
   const rows = c.careers.length
     ? c.careers.slice(0, 4).map((r) => `<tr><td>${r.title || r.role || 'Career Path'}</td><td>${r.match || r.salary || '—'}</td><td>${r.reasoning || r.note || ''}</td></tr>`).join('')
-    : `<tr><td>First Job</td><td>₹3.5–6.5 LPA</td><td>Entry into tech / structured sector</td></tr>
-       <tr><td>2 Years</td><td>₹6–12 LPA</td><td>Growth into mid-level roles</td></tr>
-       <tr><td>4 Years</td><td>₹12–25 LPA</td><td>Senior / lead positions</td></tr>
-       <tr><td>30+</td><td>₹25L+ / Business</td><td>Leadership, startup, or executive path</td></tr>`;
+    : '';
 
   const phases = c.threeYear.length
     ? c.threeYear.map((y, i) => `<p><strong>Phase ${i + 1}:</strong> ${y.year || y.title || ''} — ${y.milestone || y.focus || ''}</p>`).join('')
-    : `<p><strong>Phase 1 (2025–2027):</strong> Entry and skill building in your strongest sector.</p>
-       <p><strong>Phase 2 (2027–2030):</strong> Growth into higher-responsibility roles.</p>
-       <p><strong>Phase 3 (30+):</strong> Leadership, business ownership, or executive authority.</p>`;
+    : '';
 
   return `
       <p class="panel-title">Career Blueprint</p>
-      ${phases}
-      <table class="pro-data-table">
+      ${phases || missingSectionNote('career roadmap phases from your chart')}
+      ${rows ? `<table class="pro-data-table">
         <thead><tr><th>Stage</th><th>Range / Match</th><th>Focus</th></tr></thead>
         <tbody>${rows}</tbody>
-      </table>
-      <p class="career-note">${c.career || 'Focus on mastery, consistency, and environments that reward skill and leadership.'}</p>`;
+      </table>` : missingSectionNote('career path recommendations from your chart')}
+      <p class="career-note">${c.career || ''}</p>`;
 }
 
 function careerBlueprintTable(c) {
@@ -474,7 +529,7 @@ function buildPremiumOverviewPage(c, userName, userDetails, theme) {
     ${sectionHeader('Premium Report Overview')}
     <div class="content-card compact-card">
       <div class="stats-row">
-        ${statCard('Confidence Score', `${c.confidence}%`)}
+        ${statCard('Confidence Score', formatConfidence(c.confidence))}
         ${statCard('Report Pages', String(theme.pageCount || 15))}
       </div>
       <table class="details-table pro-table">
@@ -499,24 +554,25 @@ function buildAstrologyDeepAnalysisPage(c, astro, theme, userName = '', userDeta
       effect: typeof p === 'string' ? p.split(':').slice(1).join(':').trim() : p.focus || p.milestone || '',
     }));
   }
-  if (!dashaItems.length && c.planets.length) {
-    dashaItems = [
-      { planet: 'Current Phase', period: '2025–2027', effect: 'Skill building and professional foundation.' },
-      { planet: 'Growth Phase', period: '2027–2030', effect: 'Leadership exposure and career acceleration.' },
-      { planet: 'Peak Phase', period: '2030+', effect: 'Authority, business expansion, or executive recognition.' },
-    ];
+  const dashaAnalysis = getDashaAnalysisLines(astro);
+  if (!dashaItems.length && dashaAnalysis.length) {
+    dashaItems = dashaAnalysis.map((line, i) => ({
+      planet: `Period ${i + 1}`,
+      period: '—',
+      effect: line,
+    }));
   }
 
   const dashaBlock = dashaItems.length
     ? dashaItems.map((d) => `<p class="compact-line"><strong>${d.planet || '—'}</strong> ${d.period ? `(${d.period})` : ''}: ${d.effect || '—'}</p>`).join('')
-    : '<p class="compact-line">Complete your birth chart reading to populate personalized planetary periods.</p>';
+    : missingSectionNote('planetary period analysis from your birth chart');
 
   return `
     ${sectionHeader('Astrology Deep Analysis')}
     <div class="content-card compact-card">
       <p class="section-intro">Vedic birth chart analysis for <strong>${userName || 'you'}</strong>${userDetailsLabel(userDetails)}.</p>
       <div class="premium-meta-row">
-        ${statCard('Confidence Score', `${c.confidence}%`)}
+        ${statCard('Confidence Score', formatConfidence(c.confidence))}
         <div class="stat-card"><span class="stat-label">Plan Tier</span><span class="stat-value stat-value-sm">${theme.label || 'Astral Navigator'}</span></div>
       </div>
       ${userDetails.gender ? `<p><strong>Gender:</strong> ${userDetails.gender}</p>` : ''}
@@ -560,21 +616,18 @@ function buildHouseGridPage(start, end, astro, c) {
 
 function buildPremiumFaceTraitMatching(c, face) {
   const traits = typeof face.personalityTraits === 'object' ? face.personalityTraits : {};
-  const scores = [
-    { label: 'Leadership', value: face.leadershipScore || traits.leadershipScore || 82 },
-    { label: 'Teamwork', value: face.teamworkScore || traits.teamworkScore || 78 },
-    { label: 'Independence', value: face.independenceScore || traits.independenceScore || 85 },
-  ];
+  const scores = collectFaceScores(face, traits);
+  const overview = traits.overview || face.careerRecommendations || '';
 
   return `
     ${sectionHeader('Face Reading Trait Matching')}
     <div class="content-card compact-card">
       <p class="section-intro">Samudrik Shastra trait scores mapped against your career profile and behavioral tendencies.</p>
-      <div class="score-row">${scores.map((s) => `<div class="score-card"><span class="score-label">${s.label}</span><span class="score-value">${s.value}%</span><div class="score-bar"><div class="score-fill" style="width:${s.value}%"></div></div></div>`).join('')}</div>
+      ${scores.length ? `<div class="score-row">${scores.map((s) => `<div class="score-card"><span class="score-label">${s.label}</span><span class="score-value">${s.value}%</span><div class="score-bar"><div class="score-fill" style="width:${s.value}%"></div></div></div>`).join('')}</div>` : missingSectionNote('face trait scores')}
       <div class="tag-row">${c.strengths.slice(0, 4).map((s) => `<span class="tag">${typeof s === 'string' ? s : s.title || s.name}</span>`).join('')}</div>
-      <p>${traits.overview || face.careerRecommendations || 'Facial structure confirms logical thinking, emotional control, and professional composure under pressure.'}</p>
+      <p>${overview || missingSectionNote('face reading analysis')}</p>
       <p class="panel-title">Best Fit Roles</p>
-      <p>${c.career || 'Leadership, analytical, and communication-driven professional roles.'}</p>
+      <p>${c.career || missingSectionNote('career recommendations from face reading')}</p>
       <p class="panel-title">Growth Areas</p>
       <div class="tag-row">${c.challenges.slice(0, 3).map((s) => `<span class="tag tag-muted">${typeof s === 'string' ? s : s.title || s.name}</span>`).join('')}</div>
     </div>`;
@@ -602,13 +655,13 @@ function buildFinalConclusionPage(c, userName) {
     ${sectionHeader('Final Expert Conclusion')}
     <div class="content-card compact-card">
       <div class="two-col">
-        <div class="insight-card"><span class="insight-label">Relationships</span><p>${c.love || 'Emotional honesty and shared ambition support long-term partnership success.'}</p></div>
-        <div class="insight-card"><span class="insight-label">Wellbeing</span><p>${c.health || 'Structured rest, routine, and stress management are essential during peak career cycles.'}</p></div>
+        <div class="insight-card"><span class="insight-label">Relationships</span><p>${c.love || missingSectionNote('relationship analysis')}</p></div>
+        <div class="insight-card"><span class="insight-label">Wellbeing</span><p>${c.health || missingSectionNote('wellbeing analysis')}</p></div>
       </div>
       <p class="panel-title" style="margin-top:12px">Core Strengths</p>
       <div class="tag-row">${c.strengths.slice(0, 4).map((s) => `<span class="tag">${typeof s === 'string' ? s : s.title || s.name}</span>`).join('')}</div>
       <div class="conclusion-box">
-        <p>${c.conclusion || `${userName}, your chart, palm, and face analysis converge on a dynamic career path requiring mastery, consistency, and strategic decision-making.`}</p>
+        <p>${c.conclusion || missingSectionNote('final conclusion from your readings')}</p>
       </div>
     </div>`;
 }
@@ -618,7 +671,7 @@ function buildExecutiveSummaryPage(c, userName) {
     ? c.careers.slice(0, 5).map((r, i) => `
         <div class="career-rec">
           <div class="career-rec-head"><strong>${i + 1}. ${r.title || r.role || 'Career Path'}</strong><span>Match: ${r.match || '—'}</span></div>
-          <p>${r.reasoning || r.note || r.description || 'Aligned with your combined astrology, palmistry, and face reading profile.'}</p>
+          <p>${r.reasoning || r.note || r.description || ''}</p>
           ${r.salary || r.expectedSalary ? `<p class="career-meta">Expected Range: ${r.salary || r.expectedSalary}</p>` : ''}
         </div>`).join('')
     : `<p>Career recommendations will appear once your full reading analysis is saved to your profile.</p>`;
@@ -626,7 +679,7 @@ function buildExecutiveSummaryPage(c, userName) {
   return `
     ${sectionHeader('Executive Summary & Career Recommendations')}
     <div class="content-card pro-card">
-      <p class="section-intro">Comprehensive analysis prepared for <strong>${userName}</strong>. Confidence score: <strong>${c.confidence}%</strong>.</p>
+      <p class="section-intro">Comprehensive analysis prepared for <strong>${userName}</strong>. Confidence score: <strong>${formatConfidence(c.confidence)}</strong>.</p>
       <p>${c.conclusion || c.career || c.intro}</p>
       <p class="panel-title">Top Career Recommendations</p>
       ${careerRows}
@@ -648,12 +701,14 @@ function buildPlanetaryPeriodsPage(c, astro, userName) {
     }));
   }
 
-  if (!dashaItems.length && c.planets.length) {
-    dashaItems = [
-      { planet: 'Current Phase', period: '2025–2027', effect: 'Skill building and professional foundation based on dominant chart placements.' },
-      { planet: 'Growth Phase', period: '2027–2030', effect: 'Leadership exposure and career acceleration aligned with 10th house indicators.' },
-      { planet: 'Peak Phase', period: '2030+', effect: 'Authority, business expansion, or executive recognition period.' },
-    ];
+  const dashaAnalysis = getDashaAnalysisLines(astro);
+  if (!dashaItems.length && dashaAnalysis.length) {
+    dashaItems = dashaAnalysis.map((line, i) => {
+      const match = line.match(/^(\w+).*?\(([^)]+)\):\s*(.+)$/);
+      return match
+        ? { planet: match[1], period: match[2], effect: match[3] }
+        : { planet: `Period ${i + 1}`, period: '—', effect: line };
+    });
   }
 
   const rows = dashaItems.length
@@ -700,23 +755,26 @@ const HOUSE_DOMAINS = {
 
 function buildPersonalizedHousePages(c, astro, userName) {
   const houses = normalizeHouses(astro, c.planets);
+  const interpretations = getPlanetInterpretations(astro);
   const houseAnalysis = (h) => {
     const sign = getHouseSign(houses, h, c.planets);
     const badge = getHouseBadge(h, sign, c.planets);
     const inHouse = c.planets.filter((p) => Number(p.house) === h);
-    const planetNames = inHouse.map((p) => p.planet).join(', ');
+    const houseTexts = interpretations
+      .filter((p) => Number(p.house) === h && p.text)
+      .map((p) => p.text);
 
     if (h === 10 && astro.careerHouseAnalysis) {
       return `<div class="house-row"><div class="house-head"><strong>House ${h}</strong><span>${badge}</span></div><p>${astro.careerHouseAnalysis}</p></div>`;
     }
 
-    let text = `For ${userName}, the ${h}${h === 1 ? 'st' : h === 2 ? 'nd' : h === 3 ? 'rd' : 'th'} house`;
-    if (sign) text += ` is placed in ${sign}`;
-    text += `, governing ${HOUSE_DOMAINS[h]}.`;
-    if (planetNames) {
-      text += ` ${planetNames} in this house directly influences how this life area manifests in your chart — shaping decisions, opportunities, and karmic lessons specific to your birth configuration.`;
-    } else if (sign) {
-      text += ` The sign of ${sign} colours the expression of this domain with its natural qualities applied to your personal circumstances.`;
+    if (houseTexts.length) {
+      return `<div class="house-row"><div class="house-head"><strong>House ${h}</strong><span>${badge}</span></div>${houseTexts.map((t) => `<p>${t}</p>`).join('')}</div>`;
+    }
+
+    let text = `For ${userName}, House ${h} (${sign || badge}) governs ${HOUSE_DOMAINS[h]}.`;
+    if (inHouse.length) {
+      text += ` ${inHouse.map((p) => `${p.planet} in ${p.sign || sign || '—'}`).join('; ')} shapes this domain in your unique chart.`;
     }
 
     return `<div class="house-row"><div class="house-head"><strong>House ${h}</strong><span>${badge}</span></div><p>${text}</p></div>`;
@@ -735,18 +793,10 @@ function buildPalmLineDeepDive(c, palm) {
     palm.sunLineAnalysis && { title: 'Sun Line (Recognition)', text: palm.sunLineAnalysis },
   ].filter(Boolean);
 
-  if (!lines.length) {
-    lines.push(
-      { title: 'Fate Line', text: 'Your fate line trajectory indicates self-directed career growth with increasing clarity in your late twenties.' },
-      { title: 'Head Line', text: 'A deep, well-formed head line reflects analytical precision combined with creative problem-solving capacity.' },
-      { title: 'Sun Line', text: 'Sun line visibility suggests recognition through consistent professional excellence and public credibility.' }
-    );
-  }
-
   return `
     ${sectionHeader('Detailed Palmistry Line Analysis')}
     <div class="content-card compact-card">
-      ${lines.map((l) => `<div class="line-card"><span class="line-label">${l.title}</span><p>${l.text}</p></div>`).join('')}
+      ${lines.length ? lines.map((l) => `<div class="line-card"><span class="line-label">${l.title}</span><p>${l.text}</p></div>`).join('') : missingSectionNote('palm line analysis')}
       ${palm.careerRecommendations ? `<p style="margin-top:12px"><strong>Career Insight:</strong> ${palm.careerRecommendations}</p>` : ''}
     </div>`;
 }
@@ -778,7 +828,7 @@ function buildFreeOverviewPage(c, userName, userDetails, theme) {
     ${sectionHeader('Report Overview')}
     <div class="content-card compact-card">
       <div class="stats-row">
-        ${statCard('Confidence Score', `${c.confidence}%`)}
+        ${statCard('Confidence Score', formatConfidence(c.confidence))}
         ${statCard('Report Tier', theme.label || 'Cosmic Explorer')}
       </div>
       ${userDetailsTable(userName, userDetails)}
@@ -790,24 +840,21 @@ function buildFreeOverviewPage(c, userName, userDetails, theme) {
 
 function buildFaceTraitMatching(c, face, professional = false) {
   const traits = typeof face.personalityTraits === 'object' ? face.personalityTraits : {};
-  const scores = [
-    { label: 'Leadership', value: face.leadershipScore || traits.leadershipScore || 82 },
-    { label: 'Teamwork', value: face.teamworkScore || traits.teamworkScore || 78 },
-    { label: 'Independence', value: face.independenceScore || traits.independenceScore || 85 },
-  ];
+  const scores = collectFaceScores(face, traits);
+  const overview = traits.overview || face.careerRecommendations || '';
 
   if (professional) {
     return `
       ${sectionHeader('Face Reading Trait Matching')}
       <div class="content-card pro-card">
         <p class="section-intro">Physiognomy trait assessment mapped to ${c.userDetails ? 'your' : 'client'} career profile.</p>
-        <table class="pro-data-table">
-          <thead><tr><th>Trait</th><th>Score</th><th>Career Relevance</th></tr></thead>
+        ${scores.length ? `<table class="pro-data-table">
+          <thead><tr><th>Trait</th><th>Score</th></tr></thead>
           <tbody>
-            ${scores.map((s) => `<tr><td>${s.label}</td><td>${s.value}%</td><td>${s.label === 'Leadership' ? 'Management and authority roles' : s.label === 'Teamwork' ? 'Collaborative and cross-functional environments' : 'Entrepreneurship and self-directed work'}</td></tr>`).join('')}
+            ${scores.map((s) => `<tr><td>${s.label}</td><td>${s.value}%</td></tr>`).join('')}
           </tbody>
-        </table>
-        <p style="margin-top:14px">${traits.overview || face.careerRecommendations || 'Facial structure analysis confirms logical thinking, emotional control, and professional composure under pressure.'}</p>
+        </table>` : missingSectionNote('face trait scores')}
+        <p style="margin-top:14px">${overview || missingSectionNote('face reading analysis')}</p>
         <p class="panel-title" style="margin-top:14px">Matched Strengths</p>
         <ul class="bullet-list">${c.strengths.slice(0, 6).map((s) => `<li>${typeof s === 'string' ? s : s.title || s.name}</li>`).join('')}</ul>
       </div>`;
@@ -829,21 +876,17 @@ function buildThreeYearRoadmap(c) {
         year: y.year || y.title || `Year ${i + 1}`,
         focus: y.milestone || y.focus || y.description || '',
       }))
-    : [
-        { year: 'Year 1', focus: 'Skill mastery, certification, and building professional credibility in your core sector.' },
-        { year: 'Year 2', focus: 'Leadership exposure, team ownership, and visible delivery of high-impact projects.' },
-        { year: 'Year 3', focus: 'Senior role transition, business scaling, or executive authority with long-term wealth building.' },
-      ];
+    : [];
 
   return `
     ${sectionHeader('3-Year Career Roadmap')}
     <div class="content-card compact-card">
-      ${items.map((item, i) => `
+      ${items.length ? items.map((item, i) => `
         <div class="roadmap-item">
           <span class="roadmap-step">Year ${i + 1}</span>
           <strong>${item.year}</strong>
           <p>${item.focus}</p>
-        </div>`).join('')}
+        </div>`).join('') : missingSectionNote('3-year career roadmap')}
       ${c.future?.length ? `<p style="margin-top:12px"><strong>Astrological Timing:</strong> ${c.future.map((p) => (typeof p === 'string' ? p : `${p.period || p.year}: ${p.focus || ''}`)).join(' · ')}</p>` : ''}
     </div>`;
 }
@@ -887,8 +930,11 @@ function buildFreePages(analysis, fullData, userName, userDetails, images) {
   const c = buildContent(analysis, fullData, 'free', userName, userDetails);
   const pages = [];
 
+  const astro = fullData.astrology || {};
+
   pages.push(brandCover(theme, userName, userDetails));
   pages.push(buildFreeOverviewPage(c, userName, userDetails, theme));
+  pages.push(buildBirthChartPage(astro, userName, userDetails));
 
   pages.push(`
     ${sectionHeader('Astrology Deep Analysis')}
@@ -911,7 +957,7 @@ function buildFreePages(analysis, fullData, userName, userDetails, images) {
       ${c.personality ? `<p>${c.personality}</p>` : ''}
       <div class="tag-row">${c.strengths.slice(0, 5).map((s) => `<span class="tag">${typeof s === 'string' ? s : s.title || s.name}</span>`).join('')}</div>
       <div class="conclusion-box">
-        <p>${c.conclusion || `${userName} is best suited for a dynamic, skill-based career path. Focus on mastery and consistent execution.`}</p>
+        <p>${c.conclusion || missingSectionNote('final conclusion from your readings')}</p>
       </div>
       ${Array.isArray(c.remedies) && c.remedies.length ? `<p class="panel-title">Recommended Actions</p>${asList(c.remedies.slice(0, 4))}` : ''}
     </div>`);
@@ -950,7 +996,7 @@ function buildMasterOverviewPage(c, userName, userDetails, theme) {
     ${sectionHeader('Cosmic Master Report Overview')}
     <div class="content-card compact-card">
       <div class="stats-row">
-        ${statCard('Confidence Score', `${c.confidence}%`)}
+        ${statCard('Confidence Score', formatConfidence(c.confidence))}
         ${statCard('Report Pages', String(theme.pageCount || 25))}
       </div>
       <table class="details-table pro-table">
@@ -969,19 +1015,22 @@ function buildMasterOverviewPage(c, userName, userDetails, theme) {
 
 function buildDoshaYogaPage(c, astro, userName, userDetails = {}) {
   const yogas = c.yogas.length
-    ? c.yogas.map((y) => (typeof y === 'string' ? y : `${y.name || y.type || 'Yoga'}: ${y.effect || y.description || 'Favorable influence on career and life path.'}`))
-    : ['Gaja Kesari Yoga: Intelligence, reputation, and leadership capacity.', 'Raj Yoga indicators: Potential for authority and public recognition.'];
+    ? c.yogas.map((y) => (typeof y === 'string' ? y : `${y.name || y.type || 'Yoga'}: ${y.effect || y.description || ''}`))
+    : [];
 
+  const dashaAnalysis = getDashaAnalysisLines(astro);
   const dashaLines = c.dashas.length
-    ? c.dashas.map((d) => `<p class="compact-line"><strong>${d.planet}</strong> (${d.period}): ${d.effect}</p>`).join('')
-    : `<p class="compact-line">Planetary periods calculated from ${userName}'s birth chart indicate structured karmic phases affecting career momentum.</p>`;
+    ? c.dashas.map((d) => `<p class="compact-line"><strong>${d.planet}</strong> (${d.period}): ${d.effect || '—'}</p>`).join('')
+    : dashaAnalysis.length
+      ? dashaAnalysis.map((line) => `<p class="compact-line">${line}</p>`).join('')
+      : missingSectionNote('planetary period analysis');
 
   return `
     ${sectionHeader('Full Planetary Dosha & Yoga Analysis')}
     <div class="content-card compact-card">
       <p class="section-intro">Complete Vedic yoga and planetary period assessment for ${userName}${userDetailsLabel(userDetails)}.</p>
       <p class="panel-title">Yogas Identified in Your Chart</p>
-      ${asList(yogas)}
+      ${yogas.length ? asList(yogas) : missingSectionNote('yoga analysis')}
       <p class="panel-title" style="margin-top:12px">Planetary Periods (Dasha) — Career Impact</p>
       ${dashaLines}
       ${astro.careerHouseAnalysis ? `<p class="panel-title" style="margin-top:12px">10th House Career Analysis</p><p>${astro.careerHouseAnalysis}</p>` : ''}
@@ -1006,17 +1055,11 @@ function buildDeepPalmInterpretationPage(c, palm, userName) {
     palm.careerRecommendations && { title: 'Hand Type & Mount Analysis', text: palm.careerRecommendations },
   ].filter(Boolean);
 
-  if (!sections.length) {
-    sections.push(
-      { title: 'Integrated Palm Assessment', text: 'Your palm structure indicates strong career drive with increasing clarity through disciplined effort and strategic decision-making.' }
-    );
-  }
-
   return `
     ${sectionHeader('Deep Palm & Hand Interpretation')}
     <div class="content-card compact-card">
       <p class="section-intro">Exhaustive Samudrik Shastra palm analysis for ${userName} — innate (left) and active (right) hand synthesis.</p>
-      ${sections.map((s) => `<div class="line-card"><span class="line-label">${s.title}</span><p>${s.text}</p></div>`).join('')}
+      ${sections.length ? sections.map((s) => `<div class="line-card"><span class="line-label">${s.title}</span><p>${s.text}</p></div>`).join('') : missingSectionNote('deep palm interpretation')}
       ${c.palmLeftParagraphs?.length ? `<p class="panel-title" style="margin-top:10px">Left Hand Summary</p>${c.palmLeftParagraphs.map((p) => `<p>${p}</p>`).join('')}` : ''}
       ${c.palmRightParagraphs?.length ? `<p class="panel-title" style="margin-top:10px">Right Hand Summary</p>${c.palmRightParagraphs.map((p) => `<p>${p}</p>`).join('')}` : ''}
     </div>`;
@@ -1042,17 +1085,17 @@ function buildDeepFaceInterpretationPage(c, face, userName) {
 function buildIntegratedCareerPage(c, userName) {
   const rows = c.careers.length
     ? c.careers.map((r) => `<tr><td>${r.title || r.role || 'Career Path'}</td><td>${r.match || '—'}</td><td>${r.reasoning || r.note || r.description || ''}</td></tr>`).join('')
-    : `<tr><td>Primary Path</td><td>—</td><td>${c.career || 'Leadership and analytical professional growth based on combined readings.'}</td></tr>`;
+    : '';
 
   return `
     ${sectionHeader('Integrated Career Recommendations')}
     <div class="content-card compact-card">
       <p class="section-intro">Astrology, palmistry, and face reading synthesized into ranked career paths for ${userName}.</p>
-      <p>${c.conclusion || c.career || c.intro}</p>
-      <table class="pro-data-table">
+      <p>${c.conclusion || c.career || ''}</p>
+      ${rows ? `<table class="pro-data-table">
         <thead><tr><th>Career Path</th><th>Match</th><th>Reasoning</th></tr></thead>
         <tbody>${rows}</tbody>
-      </table>
+      </table>` : missingSectionNote('integrated career recommendations')}
       <p class="panel-title">Core Strengths</p>
       <div class="tag-row">${c.strengths.slice(0, 6).map((s) => `<span class="tag">${typeof s === 'string' ? s : s.title || s.name}</span>`).join('')}</div>
     </div>`;
@@ -1064,48 +1107,44 @@ function buildMicroMilestonesPage(c) {
         label: item.month || item.period || `Phase ${i + 1}`,
         focus: item.focus || item.milestone || item.description || '',
       }))
-    : [
-        { label: 'Month 1–2', focus: 'Skill audit, personal branding, and foundational certification in your target sector.' },
-        { label: 'Month 3–4', focus: 'Strategic networking, mentorship outreach, and first visible project delivery.' },
-        { label: 'Month 5–6', focus: 'Leadership exposure, measurable KPI achievement, and career positioning for promotion.' },
-      ];
+    : [];
 
   return `
     ${sectionHeader('Micro-Milestones Roadmap')}
     <div class="content-card compact-card">
       <p class="section-intro">Six-month micro-milestones translating your cosmic blueprint into actionable career checkpoints.</p>
-      ${items.map((item, i) => `
+      ${items.length ? items.map((item, i) => `
         <div class="roadmap-item">
           <span class="roadmap-step">Milestone ${i + 1}</span>
           <strong>${item.label}</strong>
           <p>${item.focus}</p>
-        </div>`).join('')}
+        </div>`).join('') : missingSectionNote('micro-milestones roadmap')}
     </div>`;
 }
 
 function buildDayByDayActionPlansPage(c, userName) {
-  const remedies = Array.isArray(c.remedies) ? c.remedies : [];
-  const weeks = [
-    { week: 'Week 1', focus: 'Chart review & goal setting', actions: remedies[0] || 'Document top 3 career goals aligned with your 10th house indicators.' },
-    { week: 'Week 2', focus: 'Skill building', actions: remedies[1] || 'Complete one certification module or skill assessment in your target field.' },
-    { week: 'Week 3', focus: 'Network expansion', actions: remedies[2] || 'Connect with 5 industry professionals; schedule 2 informational conversations.' },
-    { week: 'Week 4', focus: 'Execution & review', actions: remedies[3] || 'Deliver one high-visibility project; review progress against micro-milestones.' },
-  ];
+  const remedies = Array.isArray(c.remedies) ? c.remedies.filter(Boolean) : [];
+  if (!remedies.length) {
+    return `
+      ${sectionHeader('Day-by-Day Action Plans')}
+      <div class="content-card compact-card">
+        <p class="section-intro">Structured weekly and daily action framework for ${userName} to activate chart potential.</p>
+        ${missingSectionNote('personalized action plans from your chart reading')}
+      </div>`;
+  }
 
-  const dailyDefaults = [
-    'Morning: 20-minute deep-work block before meetings (aligns with favorable planetary hours).',
-    'Midday: One career-building action — email, application, or skill practice.',
-    'Evening: 10-minute journal on progress, obstacles, and next-day priority.',
-  ];
+  const weeks = remedies.slice(0, 4).map((actions, i) => ({
+    week: `Week ${i + 1}`,
+    focus: ['Chart-aligned goals', 'Skill building', 'Network expansion', 'Execution & review'][i],
+    actions,
+  }));
 
   return `
     ${sectionHeader('Day-by-Day Action Plans')}
     <div class="content-card compact-card">
       <p class="section-intro">Structured weekly and daily action framework for ${userName} to activate chart potential.</p>
       ${weeks.map((w) => `<div class="line-card"><span class="line-label">${w.week} — ${w.focus}</span><p>${w.actions}</p></div>`).join('')}
-      <p class="panel-title" style="margin-top:12px">Daily Ritual Framework</p>
-      ${asList(dailyDefaults)}
-      ${remedies.length > 4 ? `<p class="panel-title" style="margin-top:10px">Personalized Remedies</p>${asList(remedies.slice(4, 10))}` : ''}
+      ${remedies.length > 4 ? `<p class="panel-title" style="margin-top:12px">Additional Chart Remedies</p>${asList(remedies.slice(4, 10))}` : ''}
     </div>`;
 }
 
@@ -1114,8 +1153,8 @@ function buildRelationshipsWellbeingPage(c) {
     ${sectionHeader('Relationships, Wellbeing & Life Strategy')}
     <div class="content-card compact-card">
       <div class="two-col">
-        <div class="insight-card"><span class="insight-label">Relationships</span><p>${c.love || 'Emotional honesty and shared ambition support long-term partnership success.'}</p></div>
-        <div class="insight-card"><span class="insight-label">Wellbeing</span><p>${c.health || 'Structured rest, routine, and stress management are essential during peak career cycles.'}</p></div>
+        <div class="insight-card"><span class="insight-label">Relationships</span><p>${c.love || missingSectionNote('relationship analysis')}</p></div>
+        <div class="insight-card"><span class="insight-label">Wellbeing</span><p>${c.health || missingSectionNote('wellbeing analysis')}</p></div>
       </div>
       ${c.personality ? `<p style="margin-top:12px"><strong>Personality Profile:</strong> ${c.personality}</p>` : ''}
       <p class="panel-title">Development Areas</p>
@@ -1124,21 +1163,13 @@ function buildRelationshipsWellbeingPage(c) {
 }
 
 function buildRemediesPriorityPage(c) {
-  const remedies = Array.isArray(c.remedies) && c.remedies.length
-    ? c.remedies
-    : [
-        'Maintain a consistent morning routine aligned with your dominant planetary energy.',
-        'Practice Thursday Jupiter gratitude for career expansion.',
-        'Quarterly skill certification to stay ahead in your sector.',
-        'Avoid impulsive financial decisions during eclipse periods.',
-        'Weekly physical exercise to balance Mars energy and reduce stress.',
-      ];
+  const remedies = Array.isArray(c.remedies) ? c.remedies.filter(Boolean) : [];
 
   return `
     ${sectionHeader('Remedies & Priority Actions')}
     <div class="content-card compact-card">
       <p class="section-intro">Priority generation — personalized remedial and action recommendations from your full reading.</p>
-      ${asList(remedies.slice(0, 8))}
+      ${remedies.length ? asList(remedies.slice(0, 8)) : missingSectionNote('chart remedies and priority actions')}
       ${c.future?.length ? `<p class="panel-title" style="margin-top:12px">Astrologically Favorable Timing</p><p>${c.future.map((p) => (typeof p === 'string' ? p : `${p.period || p.year}: ${p.focus || ''}`)).join(' · ')}</p>` : ''}
     </div>`;
 }
@@ -1151,7 +1182,7 @@ function buildMasterConclusionPage(c, userName) {
       <div class="tag-row">${c.strengths.slice(0, 5).map((s) => `<span class="tag">${typeof s === 'string' ? s : s.title || s.name}</span>`).join('')}</div>
       <div class="conclusion-box">
         <p class="conclusion-label">Cosmic Master Verdict for ${userName}</p>
-        <p>${c.conclusion || `${userName}, your exhaustive chart, palm, and face analysis converge on a dynamic career path requiring mastery, consistency, and strategic decision-making. This 25-page report represents the complete integration of your cosmic blueprint.`}</p>
+        <p>${c.conclusion || missingSectionNote('final master conclusion from your readings')}</p>
       </div>
       <p class="note">This Cosmic Master report integrates Vedic astrology, palmistry, and face reading for guidance only. Your decisions and effort determine outcomes.</p>
     </div>`;
@@ -1166,6 +1197,7 @@ function buildPremiumPages(analysis, fullData, userName, userDetails, images) {
   const pages = [
     premiumCoverPage(userName, theme),
     buildPremiumOverviewPage(c, userName, userDetails, theme),
+    buildBirthChartPage(astro, userName, userDetails),
     buildAstrologyDeepAnalysisPage(c, astro, theme, userName, userDetails),
     buildHouseGridPage(1, 6, astro, c),
     buildHouseGridPage(7, 12, astro, c),
@@ -1196,6 +1228,7 @@ function buildProfessionalPages(analysis, fullData, userName, userDetails, image
     masterCoverPage(userName, userDetails, theme),
     buildMasterOverviewPage(c, userName, userDetails, theme),
     buildExecutiveSummaryPage(c, userName),
+    buildBirthChartPage(astro, userName, userDetails),
     buildAstrologyDeepAnalysisPage(c, astro, theme, userName, userDetails),
     buildPlanetaryPeriodsPage(c, astro, userName),
     buildDoshaYogaPage(c, astro, userName, userDetails),
@@ -1390,6 +1423,13 @@ function createHTMLContent(analysis, language, fullData, tier, userName, userDet
     .section-title { font-size: 15px; font-weight: 700; color: var(--ink); text-transform: uppercase; letter-spacing: 0.5px; }
 
     .content-card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; box-shadow: 0 1px 3px rgba(15,23,42,0.04); }
+    .birth-chart-page { text-align: center; }
+    .birth-chart-frame { display: flex; justify-content: center; align-items: center; margin: 10px auto 6px; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: #fffef8; max-width: 340px; }
+    .birth-chart-img { width: 100%; max-width: 320px; height: auto; display: block; }
+    .chart-meta-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 8px 0 12px; }
+    .chart-meta-pill { font-size: 11px; color: var(--ink-muted); background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; }
+    .chart-planet-table { font-size: 11px; text-align: left; }
+    .chart-planet-table th, .chart-planet-table td { padding: 6px 8px; }
     .content-card p, .lead-text { font-size: 14px; line-height: 1.8; color: var(--ink-muted); margin-bottom: 12px; }
     .lead-text { font-size: 15px; color: var(--ink); line-height: 1.85; }
     .section-intro { font-size: 13px; color: var(--ink-light); margin-bottom: 14px; }

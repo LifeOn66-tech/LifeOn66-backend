@@ -8,6 +8,7 @@ const {
   getReadingCompletionStatus,
   buildIncompleteReadingsMessage,
 } = require('../utils/readingCompletion');
+const { resolveFrontendUrl } = require('../config/allowedOrigins');
 
 const RAZORPAY_KEY_ID = (process.env.RAZORPAY_KEY_ID || '').trim();
 const RAZORPAY_KEY_SECRET = (process.env.RAZORPAY_KEY_SECRET || '').trim();
@@ -79,6 +80,39 @@ const razorpayApiRequest = (apiPath, body) =>
 const createRazorpayOrderRest = (options) => razorpayApiRequest('/v1/orders', options);
 const createRazorpayPaymentLinkRest = (options) => razorpayApiRequest('/v1/payment_links', options);
 
+function normalizeRazorpayPayload(body = {}) {
+  return {
+    razorpay_order_id:
+      body.razorpay_order_id || body.order_id || body.orderId || body.razorpayOrderId || '',
+    razorpay_payment_id:
+      body.razorpay_payment_id || body.payment_id || body.paymentId || body.razorpayPaymentId || '',
+    razorpay_signature:
+      body.razorpay_signature || body.signature || body.razorpaySignature || '',
+  };
+}
+
+function verifyRazorpaySignature(orderId, paymentId, signature, secret) {
+  if (!orderId || !paymentId || !signature || !secret) return false;
+
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(`${orderId}|${paymentId}`)
+    .digest('hex');
+
+  if (expectedSignature.length !== String(signature).length) {
+    return false;
+  }
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expectedSignature, 'utf8'),
+      Buffer.from(String(signature), 'utf8')
+    );
+  } catch {
+    return false;
+  }
+}
+
 exports.createOrder = async (req, res) => {
   try {
     const { tier } = req.body;
@@ -123,7 +157,7 @@ exports.createOrder = async (req, res) => {
         description: `Unlock ${tier.charAt(0).toUpperCase() + tier.slice(1)} Report for ${user.fullName}`,
         customer: { name: user.fullName, email: user.email },
         notify: { email: true },
-        callback_url: `http://localhost:5173/comprehensive?tier=${tier}`,
+        callback_url: `${resolveFrontendUrl()}/comprehensive?tier=${tier}`,
         callback_method: 'get',
         notes: { userId, tier }
       });
@@ -157,76 +191,113 @@ exports.createOrder = async (req, res) => {
 
 exports.verifyRazorpayPayment = async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+    } = normalizeRazorpayPayload(req.body);
 
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const secret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(body.toString())
-      .digest('hex');
-
-    const isSignatureValid = expectedSignature === razorpay_signature;
-
-    if (isSignatureValid) {
-      const transaction = await Transaction.findOne({ razorpayOrderId: razorpay_order_id });
-      if (transaction) {
-        const readingStatus = await getReadingCompletionStatus(transaction.user);
-        if (!readingStatus.complete) {
-          return res.status(400).json({
-            success: false,
-            message: buildIncompleteReadingsMessage(readingStatus),
-            code: 'READINGS_INCOMPLETE',
-            readings: readingStatus,
-          });
-        }
-
-        transaction.status = 'completed';
-        transaction.razorpayPaymentId = razorpay_payment_id;
-        transaction.razorpaySignature = razorpay_signature;
-        await transaction.save();
-
-        const user = await User.findById(transaction.user);
-        if (user) {
-          user.subscriptionTier = transaction.tier;
-          await user.save();
-        }
-
-        // Generate receipt PDF & upload to Cloudinary in the background
-        let receiptUrl = null;
-        try {
-          receiptUrl = await generateAndUploadReceipt({
-            paymentId:  razorpay_payment_id,
-            orderId:    razorpay_order_id,
-            tier:       transaction.tier,
-            amount:     transaction.amount,
-            currency:   transaction.currency.toUpperCase(),
-            userName:   user?.fullName || 'Customer',
-            userEmail:  user?.email || '',
-            date:       new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-          });
-          transaction.receiptUrl = receiptUrl;
-          await transaction.save();
-        } catch (receiptErr) {
-          console.error('[Receipt] Failed to generate/upload receipt:', receiptErr.message);
-          // Non-fatal — payment is still verified even if receipt fails
-        }
-
-        res.status(200).json({
-          success: true,
-          message: 'Payment verified successfully',
-          receiptUrl,
-        });
-      } else {
-        res.status(404).json({ success: false, message: 'Transaction not found' });
-      }
-    } else {
-      console.error('[Payment] Signature mismatch for order:', razorpay_order_id);
-      res.status(400).json({ success: false, message: 'Invalid signature' });
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed: missing order, payment, or signature.',
+        code: 'PAYMENT_PAYLOAD_INCOMPLETE',
+      });
     }
+
+    const secret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+    const isSignatureValid = verifyRazorpaySignature(
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      secret
+    );
+
+    if (!isSignatureValid) {
+      console.error('[Payment] Signature mismatch for order:', razorpay_order_id);
+      return res.status(400).json({
+        success: false,
+        message: 'Payment verification failed: invalid signature. Check Razorpay keys on the server.',
+        code: 'INVALID_SIGNATURE',
+      });
+    }
+
+    const transaction = await Transaction.findOne({ razorpayOrderId: razorpay_order_id });
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment verification failed: order not found. Please contact support with your payment ID.',
+        code: 'ORDER_NOT_FOUND',
+      });
+    }
+
+    if (
+      transaction.status === 'completed' &&
+      transaction.razorpayPaymentId === razorpay_payment_id
+    ) {
+      return res.status(200).json({
+        success: true,
+        message: 'Payment already verified',
+        receiptUrl: transaction.receiptUrl || null,
+        tier: transaction.tier,
+      });
+    }
+
+    const readingStatus = await getReadingCompletionStatus(transaction.user);
+    if (!readingStatus.complete) {
+      return res.status(400).json({
+        success: false,
+        message: buildIncompleteReadingsMessage(readingStatus),
+        code: 'READINGS_INCOMPLETE',
+        readings: readingStatus,
+      });
+    }
+
+    transaction.status = 'completed';
+    transaction.razorpayPaymentId = razorpay_payment_id;
+    transaction.razorpaySignature = razorpay_signature;
+    await transaction.save();
+
+    const user = await User.findById(transaction.user);
+    if (user) {
+      user.subscriptionTier = transaction.tier;
+      await user.save();
+    }
+
+    // Generate receipt PDF & upload to Cloudinary in the background
+    let receiptUrl = null;
+    try {
+      receiptUrl = await generateAndUploadReceipt({
+        paymentId: razorpay_payment_id,
+        orderId: razorpay_order_id,
+        tier: transaction.tier,
+        amount: transaction.amount,
+        currency: transaction.currency.toUpperCase(),
+        userName: user?.fullName || 'Customer',
+        userEmail: user?.email || '',
+        date: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      });
+      transaction.receiptUrl = receiptUrl;
+      await transaction.save();
+    } catch (receiptErr) {
+      console.error('[Receipt] Failed to generate/upload receipt:', receiptErr.message);
+      // Non-fatal — payment is still verified even if receipt fails
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Payment verified successfully',
+      receiptUrl,
+      tier: transaction.tier,
+    });
   } catch (err) {
     console.error('[Payment] Verification error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({
+      success: false,
+      message: 'Payment verification failed due to a server error.',
+      error: err.message,
+      code: 'VERIFICATION_SERVER_ERROR',
+    });
   }
 };
 

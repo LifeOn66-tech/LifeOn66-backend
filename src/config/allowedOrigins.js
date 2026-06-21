@@ -47,7 +47,16 @@ function resolveDefaultFrontendOrigin() {
   if (fromEnv && isAllowedOrigin(fromEnv)) return fromEnv;
 
   const allowed = getAllowedOrigins();
+  const productionOrigin = allowed.find(
+    (origin) => origin.startsWith('https://') && !origin.includes('localhost')
+  );
+  if (productionOrigin) return productionOrigin;
+
   return allowed[0] || 'http://localhost:5173';
+}
+
+function resolveFrontendUrl() {
+  return resolveDefaultFrontendOrigin();
 }
 
 module.exports = {
@@ -55,5 +64,6 @@ module.exports = {
   getAllowedOriginSuffixes,
   isAllowedOrigin,
   resolveDefaultFrontendOrigin,
+  resolveFrontendUrl,
   normalizeOrigin,
 };

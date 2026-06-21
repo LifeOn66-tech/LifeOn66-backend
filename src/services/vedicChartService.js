@@ -12,6 +12,7 @@ const {
 const { renderNorthIndianChart, svgToDataUrl } = require('./northIndianChartRenderer');
 const { generateFullReading } = require('./vedicInterpretationEngine');
 const { generateAstrologyNarrative, isAiEnabled } = require('./aiReadingService');
+const { applyAstrologyWordLimits } = require('../config/readingWordLimits');
 
 let engineReady = false;
 
@@ -208,7 +209,8 @@ function detectYogas(planets, lagnaSignIndex) {
   return yogas.slice(0, 8);
 }
 
-async function generateVedicChart(input = {}) {
+async function generateVedicChart(input = {}, options = {}) {
+  const skipAi = options.skipAi === true || process.env.AI_ASTROLOGY === 'false';
   await ensureEngine();
 
   const birth = parseBirthInput(input);
@@ -266,7 +268,7 @@ async function generateVedicChart(input = {}) {
   let yogasFinal = yogas;
   let aiEnhanced = false;
 
-  if (isAiEnabled()) {
+  if (isAiEnabled() && !skipAi) {
     try {
       const aiNarrative = await generateAstrologyNarrative({
         lagnaSign,
@@ -311,7 +313,7 @@ async function generateVedicChart(input = {}) {
   const chartSvg = renderNorthIndianChart(chartCore, { dark: false });
   const chartImageDataUrl = svgToDataUrl(chartSvg);
 
-  return {
+  return applyAstrologyWordLimits({
     planets,
     houses,
     dashas: dashasWithEffects,
@@ -352,7 +354,7 @@ async function generateVedicChart(input = {}) {
     lagna: lagnaSign,
     nakshatra: chart.panchanga?.nakshatra?.name,
     pada: chart.panchanga?.nakshatra?.pada,
-  };
+  });
 }
 
 module.exports = {

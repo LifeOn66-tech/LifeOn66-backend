@@ -1,19 +1,6 @@
 const { analyzePalmWithVision, isAiEnabled } = require('./aiReadingService');
-
-function buildRuleBasedFallback(images) {
-  return {
-    fateLineAnalysis: 'Upload clear palm images and configure OPENAI_API_KEY or GEMINI_API_KEY for AI-powered palm line analysis from your actual photos.',
-    headLineAnalysis: 'Head line analysis requires vision AI — enable API key in backend .env for real Hasta Samudrika reading.',
-    sunLineAnalysis: 'Sun line analysis pending — backend AI vision not configured.',
-    careerRecommendations: 'Complete AI palm analysis for personalized career guidance from your palm lines.',
-    overallRecommendations: ['Retake palm photos in good lighting with all major lines visible', 'Configure AI API key on backend for real analysis'],
-    confidenceScore: 0,
-    analysisParagraphs: [],
-    aiGenerated: false,
-    requiresAiKey: true,
-    imagesReceived: Object.keys(images || {}).filter((k) => images[k]),
-  };
-}
+const { buildPalmRuleBasedFallback } = require('./ruleBasedReadingFallback');
+const { applyPalmWordLimits } = require('../config/readingWordLimits');
 
 async function analyzePalm(images = {}, userContext = {}) {
   const normalized = {
@@ -22,27 +9,35 @@ async function analyzePalm(images = {}, userContext = {}) {
     both: images.both || images.palmBoth,
   };
 
-  if (!isAiEnabled()) {
-    return buildRuleBasedFallback(normalized);
+  const hasImages = Object.values(normalized).some(Boolean);
+
+  if (!isAiEnabled() || !hasImages) {
+    return applyPalmWordLimits(buildPalmRuleBasedFallback(normalized, userContext));
   }
 
-  const ai = await analyzePalmWithVision(normalized, userContext);
-  if (!ai) return buildRuleBasedFallback(normalized);
+  try {
+    const ai = await analyzePalmWithVision(normalized, userContext);
+    if (!ai) return applyPalmWordLimits(buildPalmRuleBasedFallback(normalized, userContext));
 
-  return {
-    fateLineAnalysis: ai.fateLineAnalysis || '',
-    headLineAnalysis: ai.headLineAnalysis || '',
-    sunLineAnalysis: ai.sunLineAnalysis || '',
-    heartLineAnalysis: ai.heartLineAnalysis || '',
-    handType: ai.handType,
-    dominantMount: ai.dominantMount,
-    careerRecommendations: ai.careerRecommendations || (ai.overallRecommendations || []).join(' '),
-    overallRecommendations: ai.overallRecommendations || [],
-    confidenceScore: ai.confidenceScore || 80,
-    analysisParagraphs: ai.analysisParagraphs || [],
-    aiGenerated: true,
-    requiresAiKey: false,
-  };
+    return applyPalmWordLimits({
+      fateLineAnalysis: ai.fateLineAnalysis || '',
+      headLineAnalysis: ai.headLineAnalysis || '',
+      sunLineAnalysis: ai.sunLineAnalysis || '',
+      heartLineAnalysis: ai.heartLineAnalysis || '',
+      handType: ai.handType,
+      dominantMount: ai.dominantMount,
+      careerRecommendations: ai.careerRecommendations || (ai.overallRecommendations || []).join(' '),
+      overallRecommendations: ai.overallRecommendations || [],
+      confidenceScore: ai.confidenceScore || 80,
+      analysisParagraphs: ai.analysisParagraphs || [],
+      aiGenerated: true,
+      degraded: false,
+      analysisSource: 'ai-vision',
+    });
+  } catch (err) {
+    console.warn('[Palm] AI failed, using rule-based fallback:', err.message);
+    return applyPalmWordLimits(buildPalmRuleBasedFallback(normalized, userContext));
+  }
 }
 
 module.exports = { analyzePalm };

@@ -4,13 +4,40 @@
  * Falls back to null so callers use rule-based chart engine.
  */
 
+const {
+  READING_WORD_LIMITS,
+  applyAstrologyWordLimits,
+  applyPalmWordLimits,
+  applyFaceWordLimits,
+  applyCareerInsightWordLimits,
+} = require('../config/readingWordLimits');
+
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
 function isAiEnabled() {
+  if (process.env.AI_ENABLED === 'false') return false;
   return Boolean(OPENAI_API_KEY || GEMINI_API_KEY);
+}
+
+function isRecoverableAiError(err) {
+  const msg = String(err?.message || err || '').toLowerCase();
+  return (
+    msg.includes('429')
+    || msg.includes('quota')
+    || msg.includes('insufficient_quota')
+    || msg.includes('rate limit')
+    || msg.includes('resource_exhausted')
+    || msg.includes('too many requests')
+    || msg.includes('503')
+    || msg.includes('502')
+    || msg.includes('timeout')
+    || msg.includes('timed out')
+    || msg.includes('fetch failed')
+    || msg.includes('econnreset')
+  );
 }
 
 async function callOpenAI({ system, user, images = [], jsonMode = true }) {
@@ -76,20 +103,37 @@ async function callGemini({ system, user, images = [], jsonMode = true }) {
 }
 
 async function callLLM(opts) {
+  if (!isAiEnabled()) return null;
+
   if (OPENAI_API_KEY) {
     try {
       return await callOpenAI(opts);
     } catch (err) {
       const msg = err.message || '';
-      const quotaHit = msg.includes('429') || msg.includes('quota') || msg.includes('insufficient_quota');
-      if (GEMINI_API_KEY && quotaHit) {
-        console.warn('[AI] OpenAI unavailable, using Gemini:', msg.slice(0, 120));
-        return callGemini(opts);
+      console.warn('[AI] OpenAI call failed:', msg.slice(0, 160));
+      if (GEMINI_API_KEY && isRecoverableAiError(err)) {
+        try {
+          return await callGemini(opts);
+        } catch (geminiErr) {
+          console.warn('[AI] Gemini fallback failed:', geminiErr.message?.slice(0, 160));
+          return null;
+        }
       }
+      if (isRecoverableAiError(err)) return null;
       throw err;
     }
   }
-  if (GEMINI_API_KEY) return callGemini(opts);
+
+  if (GEMINI_API_KEY) {
+    try {
+      return await callGemini(opts);
+    } catch (err) {
+      console.warn('[AI] Gemini call failed:', err.message?.slice(0, 160));
+      if (isRecoverableAiError(err)) return null;
+      throw err;
+    }
+  }
+
   return null;
 }
 
@@ -109,119 +153,144 @@ function parseJsonSafe(text) {
 async function generateAstrologyNarrative(chartPayload) {
   if (!isAiEnabled()) return null;
 
+  const L = READING_WORD_LIMITS.astrology;
+
   const system = `You are a senior Vedic astrologer (Jyotish Acharya) specializing in career guidance.
 You receive REAL calculated birth chart data (not generic zodiac horoscopes).
 Write unique, specific analysis ONLY from the provided chart facts — planet signs, houses, degrees, dashas, yogas, nakshatra.
 Never give the same reading to different charts. Never use sun-sign-only generic text.
 Reference exact placements like "Jupiter as 10th lord in the 4th house at 17°".
+STRICT word limits — stay within each limit; be detailed but concise. Do not exceed limits.
 Respond in JSON only.`;
 
   const user = `Analyze this unique Vedic birth chart for career guidance:
 
 ${JSON.stringify(chartPayload, null, 2)}
 
-Return JSON:
+Return JSON (respect word limits exactly):
 {
-  "overview": "3-4 sentence personalized chart summary",
-  "careerHouseAnalysis": "detailed 10th house and 10th lord analysis",
-  "careerRecommendations": "specific career directions with reasoning from chart",
-  "favorablePeriods": ["period 1 with dasha reasoning", "period 2", ...],
-  "analysisParagraphs": ["paragraph 1", "paragraph 2", ... at least 6 unique paragraphs],
-  "careerPaths": [{"title": "...", "reasoning": "...", "match": "85%"}],
-  "yogas": ["yoga interpretation 1", ...],
-  "remedies": ["practical remedy 1", ...],
+  "overview": "personalized chart summary (max ${L.overview} words)",
+  "careerHouseAnalysis": "10th house and 10th lord analysis (max ${L.careerHouseAnalysis} words)",
+  "careerRecommendations": "career directions with chart reasoning (max ${L.careerRecommendations} words)",
+  "favorablePeriods": ["each period max ${L.favorablePeriod} words", ...],
+  "analysisParagraphs": ["each paragraph max ${L.analysisParagraph} words", ... exactly ${L.analysisParagraphCount} paragraphs],
+  "careerPaths": [{"title": "...", "reasoning": "max ${L.careerPathReasoning} words", "match": "85%"}],
+  "yogas": ["each yoga max ${L.yoga} words", ...],
+  "remedies": ["each remedy max ${L.remedy} words", ...],
   "confidenceScore": 88
 }`;
 
-  const raw = await callLLM({ system, user, jsonMode: true });
-  return parseJsonSafe(raw);
+  try {
+    const raw = await callLLM({ system, user, jsonMode: true });
+    const parsed = parseJsonSafe(raw);
+    if (!parsed || !Object.keys(parsed).length) return null;
+    return applyAstrologyWordLimits(parsed);
+  } catch (err) {
+    console.warn('[AI] Astrology narrative failed:', err.message);
+    return null;
+  }
 }
 
 async function analyzePalmWithVision(images, userContext = {}) {
-  if (!isAiEnabled()) {
-    return null;
-  }
+  if (!isAiEnabled()) return null;
 
   const imageList = [images.left, images.right, images.both].filter(Boolean);
-  if (!imageList.length) {
-    throw new Error('At least one palm image is required for analysis.');
-  }
+  if (!imageList.length) return null;
+
+  const L = READING_WORD_LIMITS.palmistry;
 
   const system = `You are an expert in Hasta Samudrika Shastra (Vedic palmistry) for career analysis.
 Analyze the ACTUAL palm images provided. Describe what you see: fate line, head line, heart line, sun line, mounts, hand shape.
 If image quality is poor, say so and analyze what is visible.
 Each reading must be unique to the visible palm features — never generic template text.
+STRICT word limits — stay within each limit; be detailed but concise. Do not exceed limits.
 Respond in JSON only.`;
 
   const user = `Analyze these palm images for career palmistry reading.
 User context: ${JSON.stringify(userContext)}
 
-Return JSON:
+Return JSON (respect word limits exactly):
 {
-  "fateLineAnalysis": "detailed fate line reading from visible features",
-  "headLineAnalysis": "detailed head line reading",
-  "sunLineAnalysis": "sun/apollo line reading",
-  "heartLineAnalysis": "heart line if visible",
+  "fateLineAnalysis": "fate line reading (max ${L.lineAnalysis} words)",
+  "headLineAnalysis": "head line reading (max ${L.lineAnalysis} words)",
+  "sunLineAnalysis": "sun/apollo line reading (max ${L.lineAnalysis} words)",
+  "heartLineAnalysis": "heart line if visible (max ${L.lineAnalysis} words)",
   "handType": "earth|air|water|fire",
   "dominantMount": "jupiter|saturn|apollo|mercury|venus|luna|mars",
-  "careerRecommendations": "career paths based on palm features seen",
-  "overallRecommendations": ["recommendation 1", "recommendation 2"],
+  "careerRecommendations": "career paths from palm features (max ${L.careerRecommendations} words)",
+  "overallRecommendations": ["each max ${L.recommendationItem} words", ...],
   "confidenceScore": 75,
-  "analysisParagraphs": ["paragraph 1", "paragraph 2", "paragraph 3"]
+  "analysisParagraphs": ["each max ${L.analysisParagraph} words", ... exactly ${L.analysisParagraphCount} paragraphs]
 }`;
 
-  const raw = await callLLM({ system, user, images: imageList, jsonMode: true });
-  return parseJsonSafe(raw);
+  try {
+    const raw = await callLLM({ system, user, images: imageList, jsonMode: true });
+    const parsed = parseJsonSafe(raw);
+    if (!parsed || !Object.keys(parsed).length) return null;
+    return applyPalmWordLimits(parsed);
+  } catch (err) {
+    console.warn('[AI] Palm vision failed:', err.message);
+    return null;
+  }
 }
 
 async function analyzeFaceWithVision(images, userContext = {}) {
-  if (!isAiEnabled()) {
-    return null;
-  }
+  if (!isAiEnabled()) return null;
 
   const imageList = [images.center, images.left, images.right].filter(Boolean);
-  if (!imageList.length) {
-    throw new Error('At least one face image is required for analysis.');
-  }
+  if (!imageList.length) return null;
+
+  const L = READING_WORD_LIMITS.face;
 
   const system = `You are an expert in Samudrika Shastra (Vedic physiognomy) for career and personality analysis.
 Analyze the ACTUAL face images: forehead, eyes, nose, mouth, chin, face shape.
 Base every statement on visible features in these specific images.
 Each reading must be unique — never generic template text.
+STRICT word limits — stay within each limit; be detailed but concise. Do not exceed limits.
 Respond in JSON only.`;
 
   const user = `Analyze these face images for career physiognomy reading.
 User context: ${JSON.stringify(userContext)}
 
-Return JSON:
+Return JSON (respect word limits exactly):
 {
   "faceShape": "oval|round|square|heart|oblong|diamond|triangle",
   "dominantFeature": "forehead|eyes|nose|mouth|chin",
   "personalityTraits": {
-    "strengths": ["strength 1", "strength 2", "strength 3"],
-    "challenges": ["challenge 1", "challenge 2"],
-    "communicationStyle": "...",
-    "workStyle": "..."
+    "strengths": ["each max ${L.traitItem} words", ...],
+    "challenges": ["each max ${L.traitItem} words", ...],
+    "communicationStyle": "max ${L.communicationStyle} words",
+    "workStyle": "max ${L.workStyle} words"
   },
   "leadershipScore": 78,
   "teamworkScore": 82,
   "independenceScore": 75,
-  "careerRecommendations": "career paths from facial features",
-  "ageRegionAnalysis": "upper/middle/lower face career timing analysis",
+  "careerRecommendations": "career paths from facial features (max ${L.careerRecommendations} words)",
+  "ageRegionAnalysis": "upper/middle/lower face timing (max ${L.ageRegionAnalysis} words)",
   "confidenceScore": 80,
-  "analysisParagraphs": ["paragraph 1", "paragraph 2", "paragraph 3"]
+  "analysisParagraphs": ["each max ${L.analysisParagraph} words", ... exactly ${L.analysisParagraphCount} paragraphs]
 }`;
 
-  const raw = await callLLM({ system, user, images: imageList, jsonMode: true });
-  return parseJsonSafe(raw);
+  try {
+    const raw = await callLLM({ system, user, images: imageList, jsonMode: true });
+    const parsed = parseJsonSafe(raw);
+    if (!parsed || !Object.keys(parsed).length) return null;
+    return applyFaceWordLimits(parsed);
+  } catch (err) {
+    console.warn('[AI] Face vision failed:', err.message);
+    return null;
+  }
 }
 
 async function synthesizeCareerInsight({ astrology, palmistry, face, userDetails }) {
   if (!isAiEnabled()) return null;
 
+  const L = READING_WORD_LIMITS.careerInsight;
+
   const system = `You are a master career astrologer synthesizing Vedic astrology, palmistry, and face reading.
 Combine all three readings into one unified career blueprint. Reference specific facts from each source.
 Never contradict the chart data. Output unique synthesis per user.
+STRICT word limits — stay within each limit; be detailed but concise. Do not exceed limits.
 Respond in JSON only.`;
 
   const user = `Synthesize career insight:
@@ -231,19 +300,26 @@ Astrology: ${JSON.stringify(astrology)}
 Palmistry: ${JSON.stringify(palmistry)}
 Face reading: ${JSON.stringify(face)}
 
-Return JSON:
+Return JSON (respect word limits exactly):
 {
-  "synthesizedRecommendation": "unified 4-5 sentence career verdict",
-  "topCareerPaths": [{"title": "...", "match": "92%", "reasoning": "..."}],
-  "strengths": ["..."],
-  "challenges": ["..."],
-  "sixMonthPathway": [{"month": "Month 1-2", "focus": "...", "actions": "..."}],
-  "threeYearPathway": [{"year": "Year 1", "milestone": "...", "focus": "..."}],
+  "synthesizedRecommendation": "unified career verdict (max ${L.synthesizedRecommendation} words)",
+  "topCareerPaths": [{"title": "...", "match": "92%", "reasoning": "max ${L.pathReasoning} words"}],
+  "strengths": ["each max ${L.traitItem} words", ...],
+  "challenges": ["each max ${L.traitItem} words", ...],
+  "sixMonthPathway": [{"month": "Month 1-2", "focus": "max ${L.pathwayFocus} words", "actions": "max ${L.pathwayActions} words"}],
+  "threeYearPathway": [{"year": "Year 1", "milestone": "max ${L.pathwayFocus} words", "focus": "max ${L.pathwayFocus} words"}],
   "confidenceScore": 90
 }`;
 
-  const raw = await callLLM({ system, user, jsonMode: true });
-  return parseJsonSafe(raw);
+  try {
+    const raw = await callLLM({ system, user, jsonMode: true });
+    const parsed = parseJsonSafe(raw);
+    if (!parsed || !Object.keys(parsed).length) return null;
+    return applyCareerInsightWordLimits(parsed);
+  } catch (err) {
+    console.warn('[AI] Career synthesis failed:', err.message);
+    return null;
+  }
 }
 
 module.exports = {

@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
+const { isAllowedOrigin } = require('./config/allowedOrigins');
 
 dotenv.config();
 
@@ -36,27 +37,12 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-const allowedOrigins = [
-  'https://lifeon66-frontend.vercel.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-];
-
 app.use(
   cors({
     origin(origin, callback) {
       if (!origin) return callback(null, true);
-
-      const cleanOrigin = origin.replace(/\/+$/, '');
-      if (
-        allowedOrigins.includes(cleanOrigin) ||
-        cleanOrigin.endsWith('.vercel.app') ||
-        cleanOrigin.endsWith('.onrender.com')
-      ) {
-        return callback(null, true);
-      }
-
-      return callback(null, true);
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(null, false);
     },
     credentials: true,
     exposedHeaders: [

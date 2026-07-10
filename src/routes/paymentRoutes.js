@@ -1,10 +1,17 @@
 const express = require('express');
-const { createOrder, verifyRazorpayPayment, getReceipt, shareReceiptHTML } = require('../controllers/paymentController');
+const {
+  createOrder,
+  verifyRazorpayPayment,
+  getReceipt,
+  shareReceiptHTML,
+  getPaymentConfig,
+} = require('../controllers/paymentController');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Public route for WhatsApp/Telegram scrapers
+// Public routes
+router.get('/config', getPaymentConfig);
 router.get('/share/:paymentId', shareReceiptHTML);
 
 // Protected routes

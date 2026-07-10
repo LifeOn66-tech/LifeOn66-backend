@@ -13,6 +13,7 @@ const { renderNorthIndianChart, svgToDataUrl } = require('./northIndianChartRend
 const { generateFullReading } = require('./vedicInterpretationEngine');
 const { generateAstrologyNarrative, isAiEnabled } = require('./aiReadingService');
 const { applyAstrologyWordLimits } = require('../config/readingWordLimits');
+const { resolveBirthLocation } = require('./locationService');
 
 let engineReady = false;
 
@@ -30,24 +31,13 @@ function getDegreeInSign(lon) {
   return normalize360(lon) % 30;
 }
 
-function getTimezoneOffsetMinutes(lat, lon) {
-  if (lat >= 6 && lat <= 37 && lon >= 68 && lon <= 97) return 330;
-  if (lat >= 24 && lat <= 49 && lon >= -125 && lon <= -66) {
-    const isDST = false;
-    return isDST ? -240 : -300;
-  }
-  return Math.round((lon / 15) * 60);
-}
-
-function parseBirthInput(input = {}) {
+async function parseBirthInput(input = {}) {
   const birth = input.birthData || input;
   const day = Number(birth.day ?? birth.date?.day);
   const month = Number(birth.month ?? birth.date?.month);
   const year = Number(birth.year ?? birth.date?.year);
   const hour = Number(birth.hour ?? birth.hours ?? 12);
   const minute = Number(birth.min ?? birth.minute ?? birth.minutes ?? 0);
-  const lat = Number(birth.lat ?? birth.latitude ?? 28.6139);
-  const lon = Number(birth.lon ?? birth.longitude ?? 77.209);
   const gender = birth.gender || input.gender || null;
   const place = birth.place || birth.placeOfBirth || input.placeOfBirth || null;
 
@@ -55,11 +45,47 @@ function parseBirthInput(input = {}) {
     throw new Error('Birth date (day, month, year) is required for chart calculation.');
   }
 
-  const offsetMin = getTimezoneOffsetMinutes(lat, lon);
-  const utcMs = Date.UTC(year, month - 1, day, hour, minute) - offsetMin * 60 * 1000;
-  const birthUtc = new Date(utcMs);
+  const location = await resolveBirthLocation({
+    place,
+    placeOfBirth: place,
+    city: birth.city ?? input.city,
+    state: birth.state ?? input.state,
+    region: birth.region ?? input.region,
+    country: birth.country ?? input.country,
+    countryCode: birth.countryCode ?? birth.country_code ?? input.countryCode ?? input.country_code,
+    lat: birth.lat ?? birth.latitude ?? input.lat ?? input.latitude,
+    lon: birth.lon ?? birth.longitude ?? input.lon ?? input.longitude,
+    timezoneId: birth.timezoneId ?? birth.timezone ?? input.timezoneId ?? input.timezone,
+    day,
+    month,
+    year,
+    hour,
+    minute,
+  });
 
-  return { day, month, year, hour, minute, lat, lon, gender, place, birthUtc };
+  if (!location.birthUtc) {
+    throw new Error('Could not convert local birth time to UTC for chart calculation.');
+  }
+
+  return {
+    day,
+    month,
+    year,
+    hour,
+    minute,
+    lat: location.lat,
+    lon: location.lon,
+    timezoneId: location.timezoneId,
+    utcOffsetMinutes: location.utcOffsetMinutes,
+    gender,
+    place: location.place,
+    city: location.city,
+    state: location.state,
+    country: location.country,
+    countryCode: location.countryCode,
+    birthUtc: location.birthUtc,
+    geocodeSource: location.geocodeSource,
+  };
 }
 
 async function ensureEngine() {
@@ -213,7 +239,7 @@ async function generateVedicChart(input = {}, options = {}) {
   const skipAi = options.skipAi === true || process.env.AI_ASTROLOGY === 'false';
   await ensureEngine();
 
-  const birth = parseBirthInput(input);
+  const birth = await parseBirthInput(input);
   const chart = await NodeJHora.calculate(
     birth.birthUtc,
     { latitude: birth.lat, longitude: birth.lon },
@@ -337,7 +363,16 @@ async function generateVedicChart(input = {}, options = {}) {
       planetInterpretations: reading.planetInterpretations,
       aiEnhanced,
       analysisSource: aiEnhanced ? 'vedic-chart+ai' : 'vedic-chart',
-      coordinates: { lat: birth.lat, lon: birth.lon },
+      coordinates: {
+        lat: birth.lat,
+        lon: birth.lon,
+        timezoneId: birth.timezoneId,
+        utcOffsetMinutes: birth.utcOffsetMinutes,
+        country: birth.country,
+        countryCode: birth.countryCode,
+        city: birth.city,
+        state: birth.state,
+      },
       birthInput: {
         day: birth.day,
         month: birth.month,
@@ -346,6 +381,13 @@ async function generateVedicChart(input = {}, options = {}) {
         minute: birth.minute,
         place: birth.place,
         gender: birth.gender,
+        lat: birth.lat,
+        lon: birth.lon,
+        timezoneId: birth.timezoneId,
+        country: birth.country,
+        countryCode: birth.countryCode,
+        city: birth.city,
+        state: birth.state,
       },
     },
     chartSvg,

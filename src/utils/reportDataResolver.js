@@ -302,6 +302,7 @@ function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyU
   const bcd = astrologyDoc?.birthChartData || {};
   const birthInput = bcd.birthInput || bcd.birthDetails || {};
   const coords = bcd.coordinates || {};
+  const bodyBirth = bodyUserDetails.birthData || bodyUserDetails.birthDetails || bodyUserDetails;
 
   const dateParts =
     parseDateParts(
@@ -309,6 +310,7 @@ function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyU
         ? { day: birthInput.day, month: birthInput.month, year: birthInput.year }
         : null
     ) ||
+    parseDateParts(bodyBirth.day != null ? bodyBirth : null) ||
     parseDateParts(bodyUserDetails.dateOfBirth) ||
     parseDateParts(userDetails.dateOfBirth) ||
     parseDateParts(astrologyDoc?.dateOfBirth) ||
@@ -322,6 +324,7 @@ function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyU
         ? { hour: birthInput.hour, minute: birthInput.minute ?? birthInput.min ?? 0 }
         : null
     ) ||
+    parseTimeParts(bodyBirth.hour != null ? bodyBirth : null) ||
     parseTimeParts(bodyUserDetails.timeOfBirth) ||
     parseTimeParts(userDetails.timeOfBirth) ||
     parseTimeParts(astrologyDoc?.timeOfBirth) ||
@@ -329,6 +332,8 @@ function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyU
 
   const place =
     birthInput.place ||
+    bodyBirth.place ||
+    bodyBirth.placeOfBirth ||
     bodyUserDetails.placeOfBirth ||
     userDetails.placeOfBirth ||
     astrologyDoc?.placeOfBirth ||
@@ -337,6 +342,7 @@ function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyU
 
   const gender =
     birthInput.gender ||
+    bodyBirth.gender ||
     bodyUserDetails.gender ||
     userDetails.gender ||
     astrologyDoc?.gender ||
@@ -349,11 +355,40 @@ function buildChartInputFromSources(userDetails = {}, astrologyDoc = null, bodyU
     year: dateParts.year,
     hour: timeParts.hour,
     minute: timeParts.minute,
-    lat: Number(coords.lat ?? birthInput.lat ?? 25.42),
-    lon: Number(coords.lon ?? birthInput.lon ?? 86.13),
+    lat: pickCoord(coords.lat, birthInput.lat, bodyBirth.lat, bodyBirth.latitude, user?.birthLatitude),
+    lon: pickCoord(coords.lon, birthInput.lon, bodyBirth.lon, bodyBirth.longitude, user?.birthLongitude),
+    timezoneId:
+      coords.timezoneId ||
+      birthInput.timezoneId ||
+      bodyBirth.timezoneId ||
+      bodyBirth.timezone ||
+      user?.birthTimezone ||
+      null,
+    countryCode:
+      coords.countryCode ||
+      birthInput.countryCode ||
+      bodyBirth.countryCode ||
+      user?.birthCountryCode ||
+      null,
+    country:
+      coords.country ||
+      birthInput.country ||
+      bodyBirth.country ||
+      null,
+    city: birthInput.city || bodyBirth.city || null,
+    state: birthInput.state || bodyBirth.state || null,
     place,
     gender,
   };
+}
+
+function pickCoord(...values) {
+  for (const value of values) {
+    if (value == null || value === '') continue;
+    const num = Number(value);
+    if (Number.isFinite(num)) return num;
+  }
+  return null;
 }
 
 function chartPayloadToAstrology(chart) {
@@ -385,57 +420,63 @@ async function ensureAstrologyChartData(
   bodyUserDetails = {},
   user = null
 ) {
-  if (hasChartPlanets(astrology)) {
-    return astrology;
-  }
+  let result = { ...astrology };
 
-  const chartInput = buildChartInputFromSources(userDetails, astrologyDoc, bodyUserDetails, user);
-  if (!chartInput) return astrology;
+  if (!hasChartPlanets(result)) {
+    const chartInput = buildChartInputFromSources(userDetails, astrologyDoc, bodyUserDetails, user);
+    if (!chartInput) return result;
 
-  try {
-    const { generateVedicChart } = require('../services/vedicChartService');
-    const chart = await generateVedicChart(chartInput, { skipAi: true });
-    const generated = chartPayloadToAstrology(chart);
+    try {
+      const { generateVedicChart } = require('../services/vedicChartService');
+      const chart = await generateVedicChart(chartInput, { skipAi: true });
+      const generated = chartPayloadToAstrology(chart);
 
-    if (astrologyDoc?._id && !hasChartPlanets(astrologyDoc)) {
-      AstrologyReading.findByIdAndUpdate(astrologyDoc._id, {
-        $set: {
-          planets: generated.planets,
-          houses: generated.houses,
-          dashas: generated.dashas,
-          yogas: generated.yogas,
-          chartSvg: generated.chartSvg,
-          chartImageDataUrl: generated.chartImageDataUrl,
-          ascendant: generated.ascendant,
-          lagna: generated.lagna,
-          nakshatra: generated.nakshatra,
-          careerHouseAnalysis: generated.careerHouseAnalysis,
-          careerRecommendations: generated.careerRecommendations,
-          favorablePeriods: generated.favorablePeriods,
-          analysisParagraphs: generated.analysisParagraphs,
-          planetInterpretations: generated.planetInterpretations,
-          careerPaths: generated.careerPaths,
-          birthChartData: generated.birthChartData,
-          dateOfBirth: userDetails.dateOfBirth || astrologyDoc.dateOfBirth,
-          timeOfBirth: userDetails.timeOfBirth || astrologyDoc.timeOfBirth,
-          placeOfBirth: userDetails.placeOfBirth || astrologyDoc.placeOfBirth,
+      if (astrologyDoc?._id && !hasChartPlanets(astrologyDoc)) {
+        AstrologyReading.findByIdAndUpdate(astrologyDoc._id, {
+          $set: {
+            planets: generated.planets,
+            houses: generated.houses,
+            dashas: generated.dashas,
+            yogas: generated.yogas,
+            chartSvg: generated.chartSvg,
+            chartImageDataUrl: generated.chartImageDataUrl,
+            ascendant: generated.ascendant,
+            lagna: generated.lagna,
+            nakshatra: generated.nakshatra,
+            careerHouseAnalysis: generated.careerHouseAnalysis,
+            careerRecommendations: generated.careerRecommendations,
+            favorablePeriods: generated.favorablePeriods,
+            analysisParagraphs: generated.analysisParagraphs,
+            planetInterpretations: generated.planetInterpretations,
+            careerPaths: generated.careerPaths,
+            birthChartData: generated.birthChartData,
+            gender: userDetails.gender || astrologyDoc.gender || user?.gender,
+            dateOfBirth: userDetails.dateOfBirth || astrologyDoc.dateOfBirth || user?.dateOfBirth,
+            timeOfBirth: userDetails.timeOfBirth || astrologyDoc.timeOfBirth || user?.timeOfBirth,
+            placeOfBirth: userDetails.placeOfBirth || astrologyDoc.placeOfBirth || user?.placeOfBirth,
+          },
+        }).catch((err) => console.warn('[Report] Could not backfill astrology reading:', err.message));
+      }
+
+      result = {
+        ...result,
+        ...generated,
+        birthChartData: {
+          ...(result.birthChartData || {}),
+          ...(generated.birthChartData || {}),
         },
-      }).catch((err) => console.warn('[Report] Could not backfill astrology reading:', err.message));
+        analysisSource: chart.analysisSource || 'vedic-chart-regenerated',
+      };
+    } catch (err) {
+      console.warn('[Report] Chart auto-regeneration failed:', err.message);
     }
-
-    return {
-      ...astrology,
-      ...generated,
-      birthChartData: {
-        ...(astrology.birthChartData || {}),
-        ...(generated.birthChartData || {}),
-      },
-      analysisSource: chart.analysisSource || 'vedic-chart-regenerated',
-    };
-  } catch (err) {
-    console.warn('[Report] Chart auto-regeneration failed:', err.message);
-    return astrology;
   }
+
+  if (hasChartPlanets(result) && !hasChartInterpretation(result)) {
+    result = applyChartHydration(result, astrologyDoc);
+  }
+
+  return result;
 }
 
 /**
@@ -534,21 +575,201 @@ function applyChartHydration(astrology = {}, astrologyDoc = null) {
   };
 }
 
-function validatePersonalizedReport(enriched) {
+function applyMinimalChartInterpretation(astro = {}) {
+  if (!hasChartPlanets(astro) || hasChartInterpretation(astro)) return astro;
+
+  const lagna =
+    astro.lagna ||
+    astro.ascendant ||
+    astro.birthChartData?.lagnaSign ||
+    'your Lagna';
+  const nakshatra = astro.nakshatra || astro.birthChartData?.nakshatra || 'your birth star';
+
+  return {
+    ...astro,
+    careerHouseAnalysis:
+      astro.careerHouseAnalysis ||
+      `Your ${lagna} chart and ${nakshatra} nakshatra shape career strengths from your completed Vedic reading.`,
+    analysisParagraphs: astro.analysisParagraphs?.length
+      ? astro.analysisParagraphs
+      : [`Personalized Vedic analysis based on your saved planetary positions under ${lagna}.`],
+    birthChartData: {
+      ...(astro.birthChartData || {}),
+      careerHouseAnalysis:
+        astro.birthChartData?.careerHouseAnalysis ||
+        `Your ${lagna} chart highlights career themes from your completed reading.`,
+      analysisParagraphs: astro.birthChartData?.analysisParagraphs?.length
+        ? astro.birthChartData.analysisParagraphs
+        : [`Analysis derived from your saved birth chart (${lagna}).`],
+    },
+  };
+}
+
+async function ensureReportReady(enriched, { user = null, astrologyDoc = null, bodyUserDetails = {} } = {}) {
   let astro = enriched.fullData?.astrology || {};
-  if (hasChartPlanets(astro) && !hasChartInterpretation(astro)) {
-    astro = applyChartHydration(astro);
-    enriched.fullData.astrology = astro;
+
+  if (!hasChartPlanets(astro)) {
+    astro = await ensureAstrologyChartData(
+      astro,
+      enriched.userDetails,
+      astrologyDoc,
+      bodyUserDetails,
+      user
+    );
+  } else if (!hasChartInterpretation(astro)) {
+    astro = applyChartHydration(astro, astrologyDoc);
   }
+
+  if (!hasChartPlanets(astro) && user?._id) {
+    const User = require('../models/User');
+    const freshUser = await User.findById(user._id).lean();
+    const retryDetails = resolveUserDetails(
+      freshUser,
+      astrologyDoc,
+      enriched.fullData,
+      bodyUserDetails,
+      enriched.analysis,
+      enriched.fullData
+    );
+    astro = await ensureAstrologyChartData(astro, retryDetails, astrologyDoc, bodyUserDetails, freshUser);
+  }
+
+  astro = applyChartHydration(astro, astrologyDoc);
+  astro = applyMinimalChartInterpretation(astro);
+  enriched.fullData.astrology = astro;
 
   const missing = [];
   if (!hasChartPlanets(astro)) {
-    missing.push('calculated birth chart (complete astrology reading or save birth date/time/place on profile)');
+    missing.push('calculated birth chart (date, time, place, and gender)');
+  }
+
+  return { ok: missing.length === 0, missing, enriched };
+}
+
+function validatePersonalizedReport(enriched) {
+  const astro = enriched.fullData?.astrology || {};
+  const missing = [];
+  if (!hasChartPlanets(astro)) {
+    missing.push('calculated birth chart (date, time, place, and gender)');
   }
   if (hasChartPlanets(astro) && !hasChartInterpretation(astro)) {
     missing.push('chart interpretation (save your astrology reading after chart generation)');
   }
   return { ok: missing.length === 0, missing };
+}
+
+function mergeGeneratedChartIntoPayload(body, chart) {
+  if (!chart) return body;
+
+  const generated = chartPayloadToAstrology(chart);
+  body.planets = generated.planets;
+  body.houses = generated.houses;
+  body.dashas = generated.dashas;
+  body.yogas = generated.yogas;
+  body.chartSvg = generated.chartSvg;
+  body.chartImageDataUrl = generated.chartImageDataUrl;
+  body.ascendant = generated.ascendant;
+  body.lagna = generated.lagna;
+  body.nakshatra = generated.nakshatra;
+  body.careerHouseAnalysis = generated.careerHouseAnalysis;
+  body.careerRecommendations = generated.careerRecommendations;
+  body.favorablePeriods = generated.favorablePeriods;
+  body.analysisParagraphs = generated.analysisParagraphs;
+  body.planetInterpretations = generated.planetInterpretations;
+  body.careerPaths = generated.careerPaths;
+  body.birthChartData = {
+    ...(body.birthChartData || {}),
+    ...(generated.birthChartData || {}),
+  };
+  return body;
+}
+
+function normalizeAstrologyBirthFields(body = {}, user = null) {
+  const bcd = body.birthChartData || {};
+  const birthInput =
+    bcd.birthInput ||
+    bcd.birthDetails ||
+    body.birthData ||
+    body.birthDetails ||
+    body.userDetails ||
+    {};
+
+  const dateParts =
+    birthInput.day != null
+      ? { day: birthInput.day, month: birthInput.month, year: birthInput.year }
+      : parseDateParts(body.dateOfBirth || user?.dateOfBirth);
+
+  const timeParts = parseTimeParts(
+    birthInput.hour != null
+      ? { hour: birthInput.hour, minute: birthInput.minute ?? birthInput.min ?? 0 }
+      : body.timeOfBirth || user?.timeOfBirth
+  );
+
+  const place =
+    birthInput.place ||
+    body.placeOfBirth ||
+    user?.placeOfBirth ||
+    null;
+  const gender =
+    body.gender ||
+    birthInput.gender ||
+    user?.gender ||
+    null;
+
+  const normalizedBirthInput = {
+    ...(dateParts || {}),
+    hour: timeParts.hour,
+    minute: timeParts.minute,
+    place,
+    gender,
+    lat: birthInput.lat ?? bcd.coordinates?.lat,
+    lon: birthInput.lon ?? bcd.coordinates?.lon,
+  };
+
+  if (dateParts) {
+    const dob = formatBirthValue(dateParts);
+    if (dob) body.dateOfBirth = body.dateOfBirth || dob;
+  }
+  if (timeParts) {
+    const timeLabel = `${String(timeParts.hour).padStart(2, '0')}:${String(timeParts.minute).padStart(2, '0')}`;
+    body.timeOfBirth = body.timeOfBirth || timeLabel;
+  }
+  if (place) body.placeOfBirth = body.placeOfBirth || place;
+  if (gender) body.gender = formatGenderValue(gender) || gender;
+
+  body.birthChartData = {
+    ...bcd,
+    birthInput: {
+      ...(bcd.birthInput || {}),
+      ...normalizedBirthInput,
+    },
+    coordinates: bcd.coordinates || {
+      lat: normalizedBirthInput.lat,
+      lon: normalizedBirthInput.lon,
+    },
+  };
+
+  return body;
+}
+
+async function prepareAstrologyReadingPayload(body = {}, user = null) {
+  normalizeAstrologyBirthFields(body, user);
+
+  const hasPlanets = body.planets?.length || body.birthChartData?.planets?.length;
+  if (hasPlanets) return body;
+
+  const userDetails = resolveUserDetails(user, body, body, body.userDetails || body.birthDetails || {}, body, body);
+  const chartInput = buildChartInputFromSources(userDetails, body, body.userDetails || {}, user);
+  if (!chartInput) return body;
+
+  try {
+    const { generateVedicChart } = require('../services/vedicChartService');
+    const chart = await generateVedicChart(chartInput, { skipAi: true });
+    return mergeGeneratedChartIntoPayload(body, chart);
+  } catch (err) {
+    console.warn('[Readings] Could not auto-generate chart on save:', err.message);
+    return body;
+  }
 }
 
 async function enrichReportData(userId, analysis = {}, fullData = {}, user = null, bodyUserDetails = {}) {
@@ -709,6 +930,7 @@ async function enrichReportData(userId, analysis = {}, fullData = {}, user = nul
     analysis: enrichedAnalysis,
     fullData: enrichedFullData,
     userDetails,
+    astrologyDoc,
     sources: {
       insightFromDb: Boolean(insightDoc),
       palmistryReadingId: palmistryDoc?._id?.toString(),
@@ -820,6 +1042,7 @@ function collectBirthValues(obj, depth = 0, visited = new WeakSet()) {
 
   const nestedKeys = [
     'birthChartData',
+    'birthInput',
     'birthDetails',
     'birthInfo',
     'userDetails',
@@ -851,13 +1074,44 @@ function pickFirstFormatted(values) {
 }
 
 function collectBodyUserDetails(body = {}) {
+  const birthDetails = body.birthDetails || body.birthData || {};
   return {
     ...(body.userDetails || {}),
-    ...(body.birthDetails || {}),
-    gender: body.gender ?? body.userDetails?.gender ?? body.birthDetails?.gender,
-    dateOfBirth: body.dateOfBirth ?? body.userDetails?.dateOfBirth ?? body.birthDetails?.dateOfBirth,
-    timeOfBirth: body.timeOfBirth ?? body.userDetails?.timeOfBirth ?? body.birthDetails?.timeOfBirth,
-    placeOfBirth: body.placeOfBirth ?? body.userDetails?.placeOfBirth ?? body.birthDetails?.placeOfBirth,
+    ...birthDetails,
+    gender: body.gender ?? body.userDetails?.gender ?? birthDetails.gender,
+    dateOfBirth:
+      body.dateOfBirth ??
+      body.userDetails?.dateOfBirth ??
+      birthDetails.dateOfBirth ??
+      (birthDetails.day != null ? birthDetails : undefined),
+    timeOfBirth: body.timeOfBirth ?? body.userDetails?.timeOfBirth ?? birthDetails.timeOfBirth ?? birthDetails.time,
+    placeOfBirth: body.placeOfBirth ?? body.userDetails?.placeOfBirth ?? birthDetails.placeOfBirth ?? birthDetails.place,
+    birthLatitude:
+      body.birthLatitude ??
+      body.latitude ??
+      birthDetails.lat ??
+      birthDetails.latitude ??
+      body.userDetails?.birthLatitude,
+    birthLongitude:
+      body.birthLongitude ??
+      body.longitude ??
+      birthDetails.lon ??
+      birthDetails.longitude ??
+      body.userDetails?.birthLongitude,
+    birthTimezone:
+      body.birthTimezone ??
+      body.timezoneId ??
+      body.timezone ??
+      birthDetails.timezoneId ??
+      birthDetails.timezone ??
+      body.userDetails?.birthTimezone,
+    birthCountryCode:
+      body.birthCountryCode ??
+      body.countryCode ??
+      birthDetails.countryCode ??
+      body.userDetails?.birthCountryCode,
+    birthData: birthDetails,
+    birthDetails,
   };
 }
 
@@ -900,6 +1154,40 @@ function resolveUserDetails(
     dateOfBirth: pickFirstFormatted(dateCandidates),
     timeOfBirth: pickFirstFormatted(timeCandidates),
     placeOfBirth: pickFirstFormatted(placeCandidates),
+    birthLatitude: pickCoord(
+      bodyUserDetails.birthLatitude,
+      bodyUserDetails.latitude,
+      bodyUserDetails.birthData?.lat,
+      bodyUserDetails.birthDetails?.lat,
+      astrologyDoc?.birthChartData?.coordinates?.lat,
+      astrologyDoc?.birthChartData?.birthInput?.lat,
+      user?.birthLatitude
+    ),
+    birthLongitude: pickCoord(
+      bodyUserDetails.birthLongitude,
+      bodyUserDetails.longitude,
+      bodyUserDetails.birthData?.lon,
+      bodyUserDetails.birthDetails?.lon,
+      astrologyDoc?.birthChartData?.coordinates?.lon,
+      astrologyDoc?.birthChartData?.birthInput?.lon,
+      user?.birthLongitude
+    ),
+    birthTimezone:
+      bodyUserDetails.birthTimezone ||
+      bodyUserDetails.timezoneId ||
+      bodyUserDetails.birthData?.timezoneId ||
+      astrologyDoc?.birthChartData?.coordinates?.timezoneId ||
+      astrologyDoc?.birthChartData?.birthInput?.timezoneId ||
+      user?.birthTimezone ||
+      null,
+    birthCountryCode:
+      bodyUserDetails.birthCountryCode ||
+      bodyUserDetails.countryCode ||
+      bodyUserDetails.birthData?.countryCode ||
+      astrologyDoc?.birthChartData?.coordinates?.countryCode ||
+      astrologyDoc?.birthChartData?.birthInput?.countryCode ||
+      user?.birthCountryCode ||
+      null,
   };
 }
 
@@ -910,6 +1198,10 @@ async function syncUserBirthDetails(userId, details) {
   if (details.dateOfBirth) updates.dateOfBirth = details.dateOfBirth;
   if (details.timeOfBirth) updates.timeOfBirth = details.timeOfBirth;
   if (details.placeOfBirth) updates.placeOfBirth = details.placeOfBirth;
+  if (details.birthLatitude != null) updates.birthLatitude = details.birthLatitude;
+  if (details.birthLongitude != null) updates.birthLongitude = details.birthLongitude;
+  if (details.birthTimezone) updates.birthTimezone = details.birthTimezone;
+  if (details.birthCountryCode) updates.birthCountryCode = details.birthCountryCode;
   if (!Object.keys(updates).length) return;
 
   const User = require('../models/User');
@@ -926,4 +1218,7 @@ module.exports = {
   hydrateChartAnalysis,
   validatePersonalizedReport,
   ensureAstrologyChartData,
+  ensureReportReady,
+  prepareAstrologyReadingPayload,
+  buildChartInputFromSources,
 };

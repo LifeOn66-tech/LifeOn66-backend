@@ -20,6 +20,10 @@ function formatUserResponse(user) {
     dateOfBirth: user.dateOfBirth || '',
     timeOfBirth: user.timeOfBirth || '',
     placeOfBirth: user.placeOfBirth || '',
+    birthLatitude: user.birthLatitude ?? null,
+    birthLongitude: user.birthLongitude ?? null,
+    birthTimezone: user.birthTimezone || '',
+    birthCountryCode: user.birthCountryCode || '',
     subscriptionTier: user.subscriptionTier || 'free',
     creditsRemaining: user.creditsRemaining ?? 10,
     avatar: user.avatar || '',
@@ -194,10 +198,15 @@ exports.googleLogin = async (req, res) => {
 // @access  Public
 exports.getAuthConfig = (req, res) => {
   const apiBase = `${req.protocol}://${req.get('host')}`;
+  const razorpayKeyId = (process.env.RAZORPAY_KEY_ID || '').trim();
   res.status(200).json({
     success: true,
     googleOAuthEnabled: isGoogleOAuthConfigured(),
     googleOAuthStartUrl: `${apiBase}/api/auth/google/start?frontend_url=${encodeURIComponent(resolveFrontendOrigin(req))}`,
+    razorpayKeyId: razorpayKeyId || null,
+    keyId: razorpayKeyId || null,
+    key: razorpayKeyId || null,
+    paymentsConfigUrl: `${apiBase}/api/payments/config`,
   });
 };
 
@@ -235,13 +244,40 @@ exports.updateProfile = async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    const { fullName, gender, dateOfBirth, timeOfBirth, placeOfBirth } = req.body;
+    const {
+      fullName,
+      gender,
+      dateOfBirth,
+      timeOfBirth,
+      placeOfBirth,
+      birthLatitude,
+      birthLongitude,
+      birthTimezone,
+      birthCountryCode,
+      countryCode,
+      latitude,
+      longitude,
+      timezoneId,
+      timezone,
+    } = req.body;
 
     if (fullName != null) user.fullName = String(fullName).trim();
     if (gender != null) user.gender = String(gender).trim();
     if (dateOfBirth != null) user.dateOfBirth = String(dateOfBirth).trim();
     if (timeOfBirth != null) user.timeOfBirth = String(timeOfBirth).trim();
     if (placeOfBirth != null) user.placeOfBirth = String(placeOfBirth).trim();
+
+    const lat = birthLatitude ?? latitude;
+    const lon = birthLongitude ?? longitude;
+    const tz = birthTimezone ?? timezoneId ?? timezone;
+    const country = birthCountryCode ?? countryCode;
+    if (lat != null && lat !== '') user.birthLatitude = Number(lat);
+    if (lon != null && lon !== '') user.birthLongitude = Number(lon);
+    if (tz != null && tz !== '') user.birthTimezone = String(tz).trim();
+    if (country != null && country !== '') {
+      const code = String(country).trim().toUpperCase();
+      if (/^[A-Z]{2}$/.test(code)) user.birthCountryCode = code;
+    }
 
     await user.save();
 

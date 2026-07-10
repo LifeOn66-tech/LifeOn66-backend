@@ -4,6 +4,7 @@ const reportController = require('../controllers/reportController');
 const { protect } = require('../middleware/auth');
 
 router.post('/generate', protect, reportController.generateReport);
+router.get('/readiness', protect, reportController.getReportReadiness);
 
 /** Frontend career-blueprint download should use this — not client-side PDF generation */
 router.post('/career-blueprint', protect, (req, res, next) => {

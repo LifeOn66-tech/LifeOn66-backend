@@ -113,8 +113,71 @@ function verifyRazorpaySignature(orderId, paymentId, signature, secret) {
   }
 }
 
+function assertRazorpayConfigured() {
+  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+    const error = new Error('Razorpay is not configured on the server. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.');
+    error.code = 'RAZORPAY_NOT_CONFIGURED';
+    throw error;
+  }
+}
+
+function buildApiBase(req) {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  return `${proto}://${host}`;
+}
+
+function buildShareReceiptUrl(req, paymentId) {
+  if (!paymentId) return null;
+  return `${buildApiBase(req)}/api/payments/share/${paymentId}`;
+}
+
+function buildPaymentCheckoutPayload(req, order, tier, user, paymentLink) {
+  return {
+    success: true,
+    orderId: order.id,
+    razorpayOrderId: order.id,
+    amount: order.amount,
+    currency: order.currency,
+    tier,
+    // Public key — required by Razorpay Checkout on the frontend (fixes .../build/undefined)
+    razorpayKeyId: RAZORPAY_KEY_ID,
+    keyId: RAZORPAY_KEY_ID,
+    key: RAZORPAY_KEY_ID,
+    razorpayKey: RAZORPAY_KEY_ID,
+    paymentLink: paymentLink || null,
+    prefill: {
+      name: user?.fullName || '',
+      email: user?.email || '',
+    },
+    notes: {
+      tier,
+      userId: String(user?._id || ''),
+    },
+  };
+}
+
+exports.getPaymentConfig = (req, res) => {
+  if (!RAZORPAY_KEY_ID) {
+    return res.status(503).json({
+      success: false,
+      message: 'Razorpay is not configured on the server.',
+      code: 'RAZORPAY_NOT_CONFIGURED',
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    razorpayKeyId: RAZORPAY_KEY_ID,
+    keyId: RAZORPAY_KEY_ID,
+    key: RAZORPAY_KEY_ID,
+    currency: 'INR',
+  });
+};
+
 exports.createOrder = async (req, res) => {
   try {
+    assertRazorpayConfigured();
     const { tier } = req.body;
     const userId = req.user.id;
 
@@ -175,16 +238,17 @@ exports.createOrder = async (req, res) => {
       status: 'pending'
     });
 
-    res.status(200).json({
-      success: true,
-      orderId: order.id,
-      amount: order.amount,
-      currency: order.currency,
-      paymentLink: paymentLinkData?.short_url,
-    });
+    res.status(200).json(
+      buildPaymentCheckoutPayload(req, order, tier, user, paymentLinkData?.short_url)
+    );
   } catch (err) {
     console.error('[Payment] Order creation failed:', err);
-    res.status(500).json({ success: false, error: err.message || 'Payment initiation failed' });
+    const status = err.code === 'RAZORPAY_NOT_CONFIGURED' ? 503 : 500;
+    res.status(status).json({
+      success: false,
+      error: err.message || 'Payment initiation failed',
+      code: err.code || 'ORDER_CREATE_FAILED',
+    });
   }
 };
 
@@ -239,7 +303,10 @@ exports.verifyRazorpayPayment = async (req, res) => {
         success: true,
         message: 'Payment already verified',
         receiptUrl: transaction.receiptUrl || null,
+        shareUrl: buildShareReceiptUrl(req, razorpay_payment_id),
         tier: transaction.tier,
+        paymentId: razorpay_payment_id,
+        orderId: razorpay_order_id,
       });
     }
 
@@ -288,7 +355,10 @@ exports.verifyRazorpayPayment = async (req, res) => {
       success: true,
       message: 'Payment verified successfully',
       receiptUrl,
+      shareUrl: buildShareReceiptUrl(req, razorpay_payment_id),
       tier: transaction.tier,
+      paymentId: razorpay_payment_id,
+      orderId: razorpay_order_id,
     });
   } catch (err) {
     console.error('[Payment] Verification error:', err);
@@ -318,10 +388,18 @@ exports.getReceipt = async (req, res) => {
     }
 
     if (!transaction.receiptUrl) {
-      return res.status(404).json({ success: false, message: 'Receipt not yet generated' });
+      return res.status(404).json({
+        success: false,
+        message: 'Receipt not yet generated',
+        shareUrl: `${buildApiBase(req)}/api/payments/share/${paymentId}`,
+      });
     }
 
-    return res.status(200).json({ success: true, receiptUrl: transaction.receiptUrl });
+    return res.status(200).json({
+      success: true,
+      receiptUrl: transaction.receiptUrl,
+      shareUrl: buildShareReceiptUrl(req, paymentId),
+    });
   } catch (err) {
     console.error('[Receipt] getReceipt error:', err);
     res.status(500).json({ success: false, error: err.message });

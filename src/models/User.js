@@ -35,6 +35,10 @@ const UserSchema = new mongoose.Schema({
   dateOfBirth: String,
   timeOfBirth: String,
   placeOfBirth: String,
+  birthLatitude: Number,
+  birthLongitude: Number,
+  birthTimezone: String,
+  birthCountryCode: String,
   subscriptionTier: {
     type: String,
     enum: ['free', 'premium', 'professional'],

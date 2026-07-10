@@ -8,7 +8,10 @@ const {
   resolveUserDetails,
   syncUserBirthDetails,
   formatGenderValue,
+  prepareAstrologyReadingPayload,
 } = require('../utils/reportDataResolver');
+const User = require('../models/User');
+const { getReadingCompletionStatus } = require('../utils/readingCompletion');
 
 // @desc    Save astrology reading
 // @route   POST /api/readings/astrology
@@ -16,6 +19,8 @@ const {
 exports.saveAstrologyReading = async (req, res) => {
   try {
     req.body.user = req.user.id;
+    const user = await User.findById(req.user.id).lean();
+    await prepareAstrologyReadingPayload(req.body, user);
 
     const gender =
       req.body.gender ||
@@ -72,6 +77,16 @@ exports.saveAstrologyReading = async (req, res) => {
       req.body,
       req.body
     );
+
+    const coords = reading.birthChartData?.coordinates || {};
+    if (!birthDetails.birthLatitude && coords.lat != null) birthDetails.birthLatitude = coords.lat;
+    if (!birthDetails.birthLongitude && coords.lon != null) birthDetails.birthLongitude = coords.lon;
+    if (!birthDetails.birthTimezone && coords.timezoneId) birthDetails.birthTimezone = coords.timezoneId;
+    if (!birthDetails.birthCountryCode && coords.countryCode) birthDetails.birthCountryCode = coords.countryCode;
+    if (!birthDetails.placeOfBirth && coords.country && reading.placeOfBirth) {
+      birthDetails.placeOfBirth = reading.placeOfBirth;
+    }
+
     await syncUserBirthDetails(req.user.id, birthDetails);
 
     res.status(201).json({ success: true, data: reading });
@@ -234,22 +249,164 @@ exports.getCareerInsight = async (req, res) => {
 // @access  Private
 exports.getReadings = async (req, res) => {
   try {
-    const astrology = await AstrologyReading.find({ user: req.user.id });
-    const palmistry = await PalmistryReading.find({ user: req.user.id });
-    const face = await FaceReading.find({ user: req.user.id });
-    const insights = await CareerInsight.find({ user: req.user.id });
+    const [astrology, palmistry, face, insights, completion] = await Promise.all([
+      AstrologyReading.find({ user: req.user.id }),
+      PalmistryReading.find({ user: req.user.id }),
+      FaceReading.find({ user: req.user.id }),
+      CareerInsight.find({ user: req.user.id }),
+      getReadingCompletionStatus(req.user.id),
+    ]);
 
     res.status(200).json({
       success: true,
+      completion,
       data: {
         astrology,
         palmistry,
         face,
-        insights
-      }
+        insights,
+      },
     });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
+  }
+};
+
+// @desc    Repair/backfill latest astrology reading chart data from saved birth details
+// @route   POST /api/readings/astrology/repair
+// @access  Private
+exports.repairAstrologyReading = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).lean();
+    const reading = await AstrologyReading.findOne({ user: req.user.id }).sort({ createdAt: -1 });
+
+    if (!reading) {
+      return res.status(404).json({
+        success: false,
+        message: 'No astrology reading found. Complete the Vedic reading first.',
+      });
+    }
+
+    const payload = reading.toObject();
+    payload.user = req.user.id;
+    Object.assign(payload, req.body || {});
+
+    await prepareAstrologyReadingPayload(payload, user);
+
+    if (!payload.planets?.length && !payload.birthChartData?.planets?.length) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Could not rebuild your birth chart. Please open Vedic Astrology and save date, time, place, and gender.',
+        code: 'BIRTH_CHART_INCOMPLETE',
+      });
+    }
+
+    const updated = await AstrologyReading.findByIdAndUpdate(
+      reading._id,
+      {
+        $set: {
+          planets: payload.planets,
+          houses: payload.houses,
+          dashas: payload.dashas,
+          yogas: payload.yogas,
+          chartSvg: payload.chartSvg,
+          chartImageDataUrl: payload.chartImageDataUrl,
+          ascendant: payload.ascendant,
+          lagna: payload.lagna,
+          nakshatra: payload.nakshatra,
+          careerHouseAnalysis: payload.careerHouseAnalysis,
+          careerRecommendations: payload.careerRecommendations,
+          favorablePeriods: payload.favorablePeriods,
+          analysisParagraphs: payload.analysisParagraphs,
+          planetInterpretations: payload.planetInterpretations,
+          careerPaths: payload.careerPaths,
+          birthChartData: payload.birthChartData,
+          gender: payload.gender,
+          dateOfBirth: payload.dateOfBirth,
+          timeOfBirth: payload.timeOfBirth,
+          placeOfBirth: payload.placeOfBirth,
+        },
+      },
+      { new: true }
+    );
+
+    const birthDetails = resolveUserDetails(
+      user,
+      updated,
+      { astrology: updated },
+      req.body.userDetails || req.body.birthDetails || {},
+      req.body,
+      req.body
+    );
+    await syncUserBirthDetails(req.user.id, birthDetails);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Birth chart repaired successfully',
+      data: updated,
+    });
+  } catch (err) {
+    console.error('[Readings] Astrology repair failed:', err.message);
+    return res.status(400).json({ success: false, error: err.message });
+  }
+};
+
+// @desc    Search birth places worldwide (autocomplete)
+// @route   GET /api/readings/search-places
+// @access  Public
+exports.searchBirthPlaces = async (req, res) => {
+  try {
+    const { searchPlaces } = require('../services/locationService');
+    const places = await searchPlaces({
+      q: req.query.q || req.query.query || req.query.place,
+      countryCode: req.query.countryCode || req.query.country,
+      limit: req.query.limit,
+    });
+
+    res.status(200).json({
+      success: true,
+      count: places.length,
+      data: places.map((place) => ({
+        place: place.displayName,
+        city: place.city,
+        state: place.state,
+        country: place.country,
+        countryCode: place.countryCode,
+        latitude: place.lat,
+        longitude: place.lon,
+        timezoneId: place.timezoneId,
+      })),
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message || 'Place search failed.' });
+  }
+};
+
+// @desc    Resolve birth place to global coordinates and timezone
+// @route   POST /api/readings/resolve-place
+// @access  Public
+exports.resolveBirthPlace = async (req, res) => {
+  try {
+    const { resolveBirthLocation } = require('../services/locationService');
+    const location = await resolveBirthLocation(req.body);
+    res.status(200).json({
+      success: true,
+      data: {
+        place: location.place,
+        city: location.city,
+        state: location.state,
+        country: location.country,
+        countryCode: location.countryCode,
+        latitude: location.lat,
+        longitude: location.lon,
+        timezoneId: location.timezoneId,
+        utcOffsetMinutes: location.utcOffsetMinutes,
+        geocodeSource: location.geocodeSource,
+      },
+    });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message || 'Failed to resolve birth place.' });
   }
 };
 
@@ -281,6 +438,7 @@ exports.generateAstrologyData = async (req, res) => {
       planetInterpretations: chart.planetInterpretations,
       aiEnhanced: chart.aiEnhanced,
       analysisSource: chart.analysisSource,
+      location: chart.birthChartData?.coordinates || null,
     });
   } catch (err) {
     console.error('Vedic chart generation failed:', err);

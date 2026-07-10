@@ -2,8 +2,9 @@ const pdfService = require('../services/pdfGeneratorService');
 const {
   enrichReportData,
   collectBodyUserDetails,
-  validatePersonalizedReport,
+  ensureReportReady,
 } = require('../utils/reportDataResolver');
+const { getReadingCompletionStatus } = require('../utils/readingCompletion');
 const User = require('../models/User');
 
 exports.generateReport = async (req, res) => {
@@ -49,7 +50,7 @@ exports.generateReport = async (req, res) => {
 
     const bodyUserDetails = collectBodyUserDetails(req.body);
 
-    const enriched = await enrichReportData(
+    let enriched = await enrichReportData(
       userId,
       analysis,
       fullData,
@@ -62,16 +63,21 @@ exports.generateReport = async (req, res) => {
     );
     console.log('[Report] Birth details:', enriched.userDetails);
 
-    const validation = validatePersonalizedReport(enriched);
+    const validation = await ensureReportReady(enriched, {
+      user,
+      astrologyDoc: enriched.astrologyDoc,
+      bodyUserDetails,
+    });
+    enriched = validation.enriched;
+
     if (!validation.ok) {
       return res.status(400).json({
         success: false,
         message:
-          validation.missing?.length === 1
-            ? `Report download blocked: ${validation.missing[0]}.`
-            : 'Your birth chart is missing required details. Please regenerate your chart.',
+          'Your birth chart is missing required details. Please regenerate your chart with date, time, place, and gender.',
         missing: validation.missing,
-        hint: 'Complete your astrology reading with date, time, and place of birth — or update your profile — then try again.',
+        hint: 'Open Vedic Astrology, enter birth details, generate your chart, and save the reading — then try again.',
+        code: 'BIRTH_CHART_INCOMPLETE',
       });
     }
 
@@ -119,5 +125,47 @@ exports.generateReport = async (req, res) => {
         error: error.message,
       });
     }
+  }
+};
+
+exports.getReportReadiness = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const readings = await getReadingCompletionStatus(userId);
+    const bodyUserDetails = collectBodyUserDetails(req.query);
+
+    let enriched = await enrichReportData(userId, {}, {}, user, bodyUserDetails);
+    const report = await ensureReportReady(enriched, {
+      user,
+      astrologyDoc: enriched.astrologyDoc,
+      bodyUserDetails,
+    });
+
+    return res.status(200).json({
+      success: true,
+      ready: readings.complete && report.ok,
+      readings,
+      report: {
+        ok: report.ok,
+        missing: report.missing,
+        hasChart: Boolean(
+          report.enriched.fullData?.astrology?.planets?.length ||
+          report.enriched.fullData?.astrology?.birthChartData?.planets?.length
+        ),
+        birthDetails: report.enriched.userDetails,
+      },
+    });
+  } catch (error) {
+    console.error('[Report] readiness check failed:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Could not verify report readiness',
+      error: error.message,
+    });
   }
 };
